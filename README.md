@@ -51,6 +51,13 @@ cd echo-break && python3 -m http.server 8000
 
 公開版：https://rucker-af.github.io/echo-break/ （スマホ・PCどちらでも遊べます）
 
+## 素材
+床・壁・箱の写真素材と、光の元にしている夜の屋上写真（HDRI）は [Poly Haven](https://polyhaven.com) の CC0 素材です。
+- hangar_concrete_floor / metal_plate_02 / metal_plate / container_side（各1k）
+- rooftop_night（HDRI 1k）
+
+「軽量」画質では色の画像だけを読み込み、凹凸・ざらつき・HDRI・接地面の影（GTAO）は使いません。
+
 ## ファイル構成
 - `index.html` … 画面の骨組み（HUD・メニュー・タッチボタン）
 - `css/style.css` … 見た目
@@ -66,6 +73,7 @@ cd echo-break && python3 -m http.server 8000
 - `js/ui.js` … HUD の表示
 - `js/input.js` … キーボード・マウス・タッチ入力
 - `js/audio.js` … 効果音（WebAudio で合成。音声ファイルは使わない）
+- `assets/` … 写真素材（テクスチャ）とHDRI
 
 ## 対人戦に向けたメモ
 - 入力は `input.js` で「アクション名」にまとめてあるので、ネット越しの入力も同じ形で流し込める

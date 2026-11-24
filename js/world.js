@@ -1,6 +1,7 @@
 // ステージ（アリーナ）：見た目・当たり判定・ジャンプパッド・空・街並み
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const NEON = { cyan: 0x2fe6ff, magenta: 0xff2bd6, amber: 0xffb02e, violet: 0x8c7bff };
@@ -154,6 +155,62 @@ export class World {
     this.flush();
     this.buildSky();
     this.buildSkyline();
+    this.realLevel = 0;
+    this.ready = this.loadRealistic(game.settings.quality === 'high');
+  }
+
+  // 写真素材（Poly Haven / CC0）で床・壁・箱をリアル寄りにする。
+  // full=false（軽量画質）のときは色の画像だけ読み、凹凸・ざらつき・夜の写真は読まない
+  async loadRealistic(full) {
+    const want = full ? 2 : 1;
+    if (this.realLevel >= want) return;
+    this.realLevel = want;
+    const tl = new THREE.TextureLoader();
+    const maxAniso = this.game.renderer.capabilities.getMaxAnisotropy();
+    const load = (name, srgb) => new Promise((res) => tl.load(`assets/tex/${name}`, (t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = Math.min(8, maxAniso);
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      res(t);
+    }, undefined, () => res(null)));
+    const apply = async (mat, name, repeat, tint, extra = {}) => {
+      const [d, n, a] = await Promise.all([
+        load(`${name}_diff_1k.jpg`, true),
+        full ? load(`${name}_nor_gl_1k.jpg`, false) : null,
+        full ? load(`${name}_arm_1k.jpg`, false) : null,
+      ]);
+      if (!d) return;
+      for (const t of [d, n, a]) if (t) t.repeat.set(repeat, repeat);
+      mat.map = d;
+      mat.color.set(!a && extra.tintLow !== undefined ? extra.tintLow : tint);
+      if (n) { mat.normalMap = n; mat.normalScale.set(extra.normal ?? 1, extra.normal ?? 1); }
+      if (a) {
+        mat.aoMap = a; mat.aoMapIntensity = 0.9;
+        mat.roughnessMap = a; mat.metalnessMap = a;
+        mat.roughness = extra.rough ?? 1; mat.metalness = extra.metal ?? 1;
+      } else {
+        mat.roughness = extra.roughFallback ?? 0.55; mat.metalness = extra.metalFallback ?? 0.4;
+      }
+      if (mat.emissiveMap) mat.emissiveIntensity = extra.emissive ?? mat.emissiveIntensity;
+      mat.needsUpdate = true;
+      if (extra.keep && n && a) this.detail = { normal: n, arm: a };
+    };
+    const jobs = [
+      apply(this.matFloor, 'hangar_concrete_floor', 30, 0x9aa0b4, { emissive: 0.22, normal: 1.2, metal: 0.6, rough: 0.9, metalFallback: 0.05, roughFallback: 0.85, tintLow: 0x6a7080 }),
+      apply(this.matWall, 'metal_plate_02', 2, 0xb4bccd, { emissive: 0.45, metalFallback: 0.5, roughFallback: 0.45, keep: true }),
+      apply(this.matDark, 'metal_plate', 2, 0x6c7385, { metalFallback: 0.7, roughFallback: 0.35 }),
+      apply(this.matCrate, 'container_side', 1.5, 0xc4beb2, { emissive: 0.35, metalFallback: 0.4, roughFallback: 0.5 }),
+    ];
+    if (full) {
+      jobs.push(new Promise((res) => new RGBELoader().load('assets/hdri/rooftop_night_1k.hdr', (hdr) => {
+        hdr.mapping = THREE.EquirectangularReflectionMapping;
+        this.scene.environment = this.pmrem.fromEquirectangular(hdr).texture;
+        this.scene.environmentIntensity = 0.9;
+        hdr.dispose();
+        res();
+      }, undefined, () => res())));
+    }
+    await Promise.all(jobs);
   }
 
   buildMaterials() {
@@ -169,7 +226,7 @@ export class World {
   }
 
   buildLights(renderer) {
-    const pmrem = new THREE.PMREMGenerator(renderer);
+    const pmrem = this.pmrem = new THREE.PMREMGenerator(renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.32;
     const hemi = new THREE.HemisphereLight(0x9fb4ff, 0x2a1438, 0.7);

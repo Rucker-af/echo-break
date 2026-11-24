@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { Input } from './input.js';
 import { World } from './world.js';
 import { Effects } from './effects.js';
@@ -76,7 +77,11 @@ class Game {
     this.clock = new THREE.Clock();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
-    setTimeout(() => { if (this.state === 'menu') this.ui.showScreen('home'); }, 350);
+    const loadText = document.getElementById('loadText');
+    if (loadText) loadText.textContent = 'LOADING TEXTURES…';
+    Promise.race([this.world.ready, new Promise((r) => setTimeout(r, 9000))])
+      .then(() => { this.applyDetail(); try { this.renderer.compile(this.scene, this.camera); } catch (e) { /* 失敗しても続行 */ } })
+      .then(() => setTimeout(() => { if (this.state === 'menu') this.ui.showScreen('home'); }, 200));
     this.refreshHome();
   }
 
@@ -98,6 +103,13 @@ class Game {
     this.composer.setPixelRatio(pr);
     this.composer.setSize(innerWidth, innerHeight);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    if (high) {
+      // 物の接地面・すき間の影（高画質のみ）
+      this.ao = new GTAOPass(this.scene, this.camera, innerWidth, innerHeight);
+      this.ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.0 });
+      this.ao.blendIntensity = 0.85;
+      this.composer.addPass(this.ao);
+    } else this.ao = null;
     const bres = high ? new THREE.Vector2(innerWidth, innerHeight) : new THREE.Vector2(innerWidth / 2, innerHeight / 2);
     this.bloom = new UnrealBloomPass(bres, 0.7, 0.45, 0.9);
     this.composer.addPass(this.bloom);
@@ -123,6 +135,29 @@ class Game {
     this.echo.mesh.visible = false;
     this.enemies.clear();
     this.effects.clear();
+  }
+
+  // 銃と敵にも金属の凹凸・ざらつきを足す（色はそのまま）
+  applyDetail() {
+    const d = this.world.detail;
+    if (!d || this.detailApplied) return;
+    this.detailApplied = true;
+    const mk = (t, rep) => { const c = t.clone(); c.repeat.set(rep, rep); c.needsUpdate = true; return c; };
+    const nW = mk(d.normal, 0.6), aW = mk(d.arm, 0.6);
+    const nE = mk(d.normal, 0.5), aE = mk(d.arm, 0.5);
+    const touch = (mat, n, a, scale) => {
+      if (!mat || !mat.isMeshStandardMaterial || mat.emissive.getHex() !== 0) return;
+      if (n) { mat.normalMap = n; mat.normalScale.set(scale, scale); }
+      mat.roughnessMap = a;
+      mat.roughness = Math.min(1, mat.roughness * 1.6);
+      mat.needsUpdate = true;
+    };
+    const seen = new Set();
+    for (const m of this.weapons.models) m.group.traverse((o) => { if (o.isMesh && !seen.has(o.material)) { seen.add(o.material); touch(o.material, null, aW, 0); } });
+    for (const t of ['trooper', 'drone', 'brute', 'dummy']) {
+      const mats = this.enemies.mats(t);
+      touch(mats.armor, nE, aE, 0.8); touch(mats.dark, nE, aE, 0.8);
+    }
   }
 
   // ---- DOM ----
@@ -175,6 +210,7 @@ class Game {
     bindRange('sVol', 'vVol', 'volume', (x) => String(Math.round(x * 100)));
     document.querySelectorAll('#sQuality button').forEach((b) => b.addEventListener('click', () => {
       this.settings.quality = b.dataset.q; this.saveSettings(); this.applyQuality(); this.refreshSettings(); this.audio.play('ui');
+      if (this.settings.quality === 'high') this.world.loadRealistic(true).then(() => this.applyDetail());
     }));
     document.querySelectorAll('#sAds button').forEach((b) => b.addEventListener('click', () => {
       this.settings.adsMode = b.dataset.m; this.input.adsToggle = false; this.saveSettings(); this.refreshSettings(); this.audio.play('ui');
