@@ -267,10 +267,19 @@ class Game {
           <div class="cs-kana">${c.kana}</div>
           <div class="cs-hp">HP ${c.hp}</div>
           <div class="cs-sil">${this.silhouette(c)}</div>
+          <img class="cs-por" alt="">
         </button>`).join('');
       list.querySelectorAll('.cs-card').forEach((b) => b.addEventListener('click', () => {
         this.charId = b.dataset.id; store('eb_char', this.charId); this.audio.init(); this.audio.play('ui'); this.renderCharDetail();
       }));
+    }
+    if (!this.portraitsDone && this.avatars.src) {
+      this.portraitsDone = true;
+      for (const c of CHARACTERS) {
+        const url = this.avatars.portrait(c);
+        const img = list.querySelector(`.cs-card[data-id="${c.id}"] .cs-por`);
+        if (url && img) { img.src = url; img.closest('.cs-card').classList.add('has-por'); }
+      }
     }
     this.renderCharDetail();
     this.menuView = 'select';
@@ -290,10 +299,11 @@ class Game {
   }
 
   placeShowcaseCamera(narrow) {
-    if (narrow) { this.camera.position.set(0, 6.3, 6.5); this.camera.lookAt(0, 6.55, 0); }
+    if (narrow) { this.camera.position.set(0, 5.6, 12); this.camera.lookAt(0, 3.75, 0); }
+    else if (innerHeight <= 520) { this.camera.position.set(-0.9, 6.2, 8.2); this.camera.lookAt(-2.4, 6.0, 0); }
     else { this.camera.position.set(-0.6, 6.2, 5.8); this.camera.lookAt(-1.75, 5.95, 0); }
     if (this.camera.fov !== 36) { this.camera.fov = 36; this.camera.updateProjectionMatrix(); }
-    this.showLight.intensity = 1.4;
+    this.showLight.intensity = 1.1;
   }
 
   hideShowcase() {
