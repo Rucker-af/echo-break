@@ -52,6 +52,7 @@ export class EchoSystem {
   reset() {
     this.frames = []; this.pendingShots = [];
     this.active = false; this.mesh.visible = false;
+    if (this.av) this.av.root.visible = false;
   }
 
   addShot(weaponIndex, dir) { this.pendingShots.push({ w: weaponIndex, d: dir.clone() }); }
@@ -74,6 +75,9 @@ export class EchoSystem {
     this.idx = 0;
     this.active = true;
     this.kills = 0;
+    this.char = g.player.char;
+    this.mat.uniforms.uColor.value.set(this.char.color).lerp(new THREE.Color(0x9d7bff), 0.35);
+    this.useAvatar();
     this.mesh.visible = true;
     const f = this.play[0];
     this.pos.set(f.x, f.y, f.z);
@@ -89,16 +93,33 @@ export class EchoSystem {
     return true;
   }
 
+  // 選んだキャラのアバターを半透明のホログラムとして使う（読み込めなければ従来の人形）
+  useAvatar() {
+    const g = this.game;
+    if (this.av) { g.scene.remove(this.av.root); this.av = null; }
+    this.avCache = this.avCache || {};
+    let av = this.avCache[this.char.id];
+    if (!av) { av = g.avatars.create(this.char, { holo: true }); if (av) this.avCache[this.char.id] = av; }
+    if (!av) return;
+    this.av = av;
+    g.scene.add(av.root);
+    av.root.visible = true;
+    av.play('Idle', 0);
+    for (const c of this.mesh.children) if (c !== this.ring) c.visible = false;
+    this.lastPos = null;
+  }
+
   // 記録された狙いの近くに敵がいれば、そちらへ少し吸い付ける
   assist(origin, dir) {
     const g = this.game;
-    let best = null, bestDot = Math.cos(0.28);
+    const nox = this.char && this.char.id === 'nox';
+    let best = null, bestDot = Math.cos(nox ? 0.6 : 0.28);
     for (const e of g.enemies.list) {
       if (!e.isActive()) continue;
       e.center(_c);
       _v.subVectors(_c, origin);
       const d = _v.length();
-      if (d > 80) continue;
+      if (d > (nox ? 140 : 80)) continue;
       const dot = _v.dot(dir) / d;
       if (dot > bestDot && g.world.los(origin, _c)) { bestDot = dot; best = _v.clone().divideScalar(d); }
     }
@@ -120,7 +141,8 @@ export class EchoSystem {
           const dir = this.assist(eye, s.d);
           const sy = Math.sin(f.yaw), cy = Math.cos(f.yaw);
           const muzzle = new THREE.Vector3(eye.x + cy * 0.28 - sy * 0.55, eye.y - 0.2, eye.z - sy * 0.28 - cy * 0.55);
-          g.combat.fireShot(def, eye.clone(), dir, muzzle, 'echo', { spread: def.spread * 0.6 });
+          const extra = this.char && this.char.id === 'vector' && Math.random() < 0.5 ? 2 : 1;
+          for (let r = 0; r < extra; r++) g.combat.fireShot(def, eye.clone(), dir, muzzle, 'echo', { spread: def.spread * (this.char && this.char.id === 'nox' ? 0.1 : 0.6) });
           g.effects.flash(muzzle, def.color, 3, 0.05);
           g.audio.play(def.sound, 0.45);
         }
@@ -135,7 +157,19 @@ export class EchoSystem {
     this.chest.set(this.pos.x, this.pos.y + h * 0.68, this.pos.z);
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = b.yaw;
-    this.mesh.scale.y = h / 1.8;
+    this.mesh.scale.y = this.av ? 1 : h / 1.8;
+    if (this.av) {
+      const av = this.av;
+      av.root.position.copy(this.pos);
+      av.root.rotation.y = b.yaw;
+      const sp = this.lastPos ? Math.hypot(this.pos.x - this.lastPos.x, this.pos.z - this.lastPos.z) / Math.max(dt, 1e-3) : 0;
+      const vy = this.lastPos ? (this.pos.y - this.lastPos.y) / Math.max(dt, 1e-3) : 0;
+      this.lastPos = (this.lastPos || new THREE.Vector3()).copy(this.pos);
+      const anim = Math.abs(vy) > 3 ? 'Jump' : sp > 6 ? 'Running' : sp > 0.8 ? 'Walking' : 'Idle';
+      av.play(anim, 0.15);
+      av.mixer.timeScale = anim === 'Running' ? Math.min(1.6, sp / 8) : 1;
+      av.mixer.update(dt);
+    }
     this.gun.rotation.x = -b.pitch * 0.5;
     this.ring.rotation.z += dt * 3;
     const remain = P[P.length - 1].t - local;
@@ -144,11 +178,29 @@ export class EchoSystem {
     if (this.idx >= P.length) this.end();
   }
 
+  // HAKEN のエコー：消えるときに周囲の敵へ電撃を連鎖させる
+  arcBurst() {
+    const g = this.game;
+    const from = this.chest.clone();
+    const targets = g.enemies.list.filter((e) => e.isActive() && e.center(_c).distanceTo(from) < 16).slice(0, 5);
+    for (const e of targets) {
+      const c = e.center(new THREE.Vector3());
+      g.effects.bolt(from, c, 0x9d7bff, 8, 0.9);
+      const killed = e.damage(60, 'body', null, 'echo');
+      g.onHitFeedback(e, 60, false, c, 'echo', killed);
+    }
+    if (targets.length) g.audio.play('arc', 1);
+  }
+
   end() {
     const g = this.game;
     this.active = false;
     this.mesh.visible = false;
-    g.combat.explode(this.chest.clone(), 7, 110, 'echo', 0x9d7bff);
+    if (this.av) this.av.root.visible = false;
+    const id = this.char ? this.char.id : '';
+    const big = id === 'boulder';
+    g.combat.explode(this.chest.clone(), big ? 11 : 7, big ? 170 : 110, 'echo', big ? 0xffb02e : 0x9d7bff);
+    if (id === 'haken') this.arcBurst();
     g.audio.play('echoEnd');
     for (const e of g.enemies.list) e.preferEcho = false;
     g.emit('echoEnd');

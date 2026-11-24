@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=9">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -51,6 +51,7 @@
     <div class="skill" id="skDash"><div class="sk-ic">DASH</div><div class="sk-key">SHIFT</div><div class="pips"><i></i><i></i></div></div>
     <div class="skill" id="skGrapple"><div class="sk-cd"></div><div class="sk-ic">HOOK</div><div class="sk-key">E</div><b class="sk-num"></b></div>
     <div class="skill" id="skShock"><div class="sk-cd"></div><div class="sk-ic">SHOCK</div><div class="sk-key">F</div><b class="sk-num"></b></div>
+    <div class="skill ult" id="skUlt"><div class="sk-fill"></div><div class="sk-ic">ULT</div><div class="sk-key">X</div><b class="sk-num"></b></div>
     <div class="skill echo" id="skEcho"><div class="sk-fill"></div><div class="sk-ic">ECHO</div><div class="sk-key">Q</div><b class="sk-num"></b></div>
   </div>
   <div id="weaponBox">
@@ -85,6 +86,7 @@
   <button class="tb sk cd" id="tbHook" data-action="grapple">HOOK</button>
   <button class="tb sk cd" id="tbShock" data-action="shock">SHOCK</button>
   <button class="tb sk cd echo" id="tbEcho" data-action="echo">ECHO</button>
+  <button class="tb sk cd ult" id="tbUlt" data-action="ult">ULT</button>
 </div>
 
 <!-- ===== 画面 ===== -->
@@ -128,6 +130,15 @@
     </div>
   </div>
   <div class="version">v0.1 PROTOTYPE</div>
+</div>
+
+<div id="charSelect" class="screen">
+  <div class="cs-wrap">
+    <div class="cs-head"><div class="kicker">SELECT YOUR AVATAR</div><h2>キャラクター選択</h2></div>
+    <div class="cs-list" id="csList"></div>
+    <div class="cs-detail" id="csDetail"></div>
+    <div class="cs-btns"><button class="mbtn small" id="btnCsBack">もどる</button><button class="mbtn primary small" id="btnDeploy">出撃</button></div>
+  </div>
 </div>
 
 <div id="settings" class="screen modal">

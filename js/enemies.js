@@ -162,7 +162,9 @@ class Enemy {
       return;
     }
     this.flash = Math.max(0, this.flash - dt * 6);
-    this.armorMat.emissive.setRGB(this.flash * 1.4, this.flash * 1.2, this.flash * 1.1);
+    const sc = this.mgr.scanT > 0 ? 0.35 + Math.sin(g.time * 8) * 0.15 : 0;
+    this.armorMat.emissive.setRGB(this.flash * 1.4 + sc, this.flash * 1.2 + sc * 0.15, this.flash * 1.1 + sc * 0.8);
+    this.updateMarker();
     this.stagger = Math.max(0, this.stagger - dt);
 
     if (T.static) {
@@ -291,6 +293,22 @@ class Enemy {
     g.audio.play(this.type === 'brute' ? 'bruteShot' : 'enemyShot', vol);
   }
 
+  // スキャン中は壁越しに見える目印を頭上に出す
+  updateMarker() {
+    const on = this.mgr.scanT > 0;
+    if (on && !this.marker) {
+      this.marker = new THREE.Sprite(this.mgr.markerMat());
+      this.marker.renderOrder = 20;
+      this.group.add(this.marker);
+    }
+    if (this.marker) {
+      this.marker.visible = on;
+      this.marker.position.set(0, this.T.h + 0.5, 0);
+      const s = this.type === 'brute' ? 0.055 : 0.04;
+      this.marker.scale.set(s, s, s);
+    }
+  }
+
   dispose() { this.armorMat.dispose(); }
 }
 
@@ -304,6 +322,7 @@ export class EnemyManager {
     const basic = (c, k) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(k) });
     this.shotMats = { red: basic(0xff3344, 4), pink: basic(0xff4ae0, 4), orange: basic(0xff8a1e, 4) };
     this.shotColors = { red: 0xff3344, pink: 0xff4ae0, orange: 0xff8a1e };
+    this.scanT = 0;
   }
 
   mats(type) {
@@ -314,6 +333,26 @@ export class EnemyManager {
       dark: new THREE.MeshStandardMaterial({ color: 0x17191f, metalness: 0.6, roughness: 0.45 }),
       glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(T.glow).multiplyScalar(3) }),
     });
+  }
+
+  markerMat() {
+    if (this._markerMat) return this._markerMat;
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.strokeStyle = '#ff3ad8'; g.lineWidth = 7; g.shadowColor = '#ff3ad8'; g.shadowBlur = 10;
+    g.beginPath(); g.moveTo(32, 6); g.lineTo(58, 32); g.lineTo(32, 58); g.lineTo(6, 32); g.closePath(); g.stroke();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(32, 32, 6, 0, Math.PI * 2); g.fill();
+    this._markerMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false });
+    return this._markerMat;
+  }
+
+  scan(t) {
+    const g = this.game;
+    this.scanT = t;
+    g.audio.play('pad', 0.7);
+    g.effects.ring(new THREE.Vector3(g.player.pos.x, g.player.pos.y + 0.2, g.player.pos.z), 0xff3ad8, 40, 0.9);
+    g.ui.flash('rgba(255,58,216,0.18)');
+    g.emit('scan');
   }
 
   spawn(type, pos, opts = {}) {
@@ -332,12 +371,13 @@ export class EnemyManager {
   clear() {
     for (const e of this.list) { this.game.scene.remove(e.group); e.dispose(); }
     for (const s of this.shots) this.game.scene.remove(s.mesh);
-    this.list = []; this.shots = [];
+    this.list = []; this.shots = []; this.scanT = 0;
   }
 
   aliveCount() { let n = 0; for (const e of this.list) if (e.alive) n++; return n; }
 
   update(dt) {
+    if (this.scanT > 0) this.scanT -= dt;
     for (const e of this.list) if (e.alive) e.update(dt);
     if (this.list.some((e) => !e.alive)) this.list = this.list.filter((e) => e.alive);
     this.updateShots(dt);
@@ -417,7 +457,12 @@ export class EnemyManager {
         _v.copy(s.vel).divideScalar(sp);
         const w = g.world.raycast(s.pos, _v, step);
         if (w) { this.impact(s, w.point); dead = true; break; }
+        _a.copy(s.pos);
         s.pos.addScaledVector(s.vel, sdt);
+        if (g.combat.shields.length && g.combat.shieldBlocks(_a, s.pos)) {
+          fx.sparks(s.pos, null, 0xffb02e, 8, 5);
+          dead = true; break;
+        }
         if (p.alive) {
           const b = p.body;
           const cy = clamp(s.pos.y, b.pos.y + 0.3, b.pos.y + b.h - 0.2);

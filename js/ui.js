@@ -1,7 +1,6 @@
 // 画面表示（HUD・メニュー・演出）
 import * as THREE from 'three';
 import { WEAPONS } from './weapons.js';
-import { GRAPPLE_CD, SHOCK_CD } from './player.js';
 import { damp, hex } from './utils.js';
 
 const _v = new THREE.Vector3();
@@ -11,19 +10,12 @@ export class UI {
   constructor(game) {
     this.g = game;
     const ids = ['hud', 'hpNum', 'hpFill', 'hpGhost', 'ammoCur', 'ammoMax', 'weaponName', 'weaponBox', 'reloadBar', 'slots', 'waveLabel', 'scoreLabel', 'comboLabel', 'enemyLabel',
-      'killfeed', 'centerMsg', 'hitmarker', 'crosshair', 'dmgVignette', 'dmgDirs', 'dmgNums', 'scorePops', 'rec', 'recTime', 'skDash', 'skGrapple', 'skShock', 'skEcho',
+      'killfeed', 'centerMsg', 'hitmarker', 'crosshair', 'dmgVignette', 'dmgDirs', 'dmgNums', 'scorePops', 'rec', 'recTime', 'skDash', 'skGrapple', 'skShock', 'skEcho', 'skUlt',
       'scope', 'clickToPlay', 'tutorial', 'tStep', 'tText', 'tProg', 'tCount', 'touch', 'topbar', 'toastBox', 'speed', 'echoBannerEl', 'flashFx'];
     for (const id of ids) this[id] = $(id);
     this.cache = {}; this.nums = []; this.ghost = 100; this.vig = 0; this.centerT = 0;
-    this.slotEls = WEAPONS.map((w, i) => {
-      const d = document.createElement('div');
-      d.className = 'slot'; d.dataset.action = 'w' + (i + 1);
-      d.style.setProperty('--c', hex(w.color));
-      d.innerHTML = `<b>${i + 1}</b><span>${w.short}</span>`;
-      this.slots.appendChild(d);
-      return d;
-    });
-    this.screens = ['loading', 'home', 'settings', 'pause', 'result', 'tutDone'];
+    this.slotEls = [];
+    this.screens = ['loading', 'home', 'charSelect', 'settings', 'pause', 'result', 'tutDone'];
   }
 
   txt(key, el, v) { if (this.cache[key] !== v) { this.cache[key] = v; el.textContent = v; } }
@@ -43,6 +35,26 @@ export class UI {
     this.killfeed.innerHTML = ''; this.dmgNums.innerHTML = ''; this.dmgDirs.innerHTML = ''; this.scorePops.innerHTML = '';
     this.nums = []; this.cache = {}; this.vig = 0; this.ghost = 100;
     this.centerMsg.classList.remove('show');
+    // キャラに合わせて武器スロット・ダッシュの目盛り・スキル名を作り直す
+    const g = this.g, c = g.player.char;
+    this.slots.innerHTML = '';
+    this.slotEls = g.weapons.loadout.map((wi, k) => {
+      const w = WEAPONS[wi];
+      const d = document.createElement('div');
+      d.className = 'slot'; d.dataset.action = 'w' + (k + 1); d.dataset.w = wi;
+      d.style.setProperty('--c', hex(w.color));
+      d.innerHTML = `<b>${k + 1}</b><span>${w.short}</span>`;
+      this.slots.appendChild(d);
+      return d;
+    });
+    this.skDash.querySelector('.pips').innerHTML = '<i></i>'.repeat(g.player.dashMax);
+    const skName = c.skill === 'scan' ? 'SCAN' : 'SHOCK';
+    this.skShock.querySelector('.sk-ic').textContent = skName;
+    $('tbShock').textContent = skName;
+    this.cls(this.skUlt, 'hidden', mode === 'tutorial');
+    this.cls($('tbUlt'), 'hidden', mode === 'tutorial');
+    this.skUlt.style.setProperty('--uc', hex(c.color));
+    this.hud.style.setProperty('--char', hex(c.color));
   }
 
   leaveGame() {
@@ -158,15 +170,20 @@ export class UI {
     this.cls(this.ammoCur, 'low', st.ammo <= Math.ceil(def.mag * 0.25));
     this.reloadBar.firstElementChild.style.width = (w.reloadT > 0 ? (1 - w.reloadT / def.reload) * 100 : 0) + '%';
     this.cls(this.reloadBar, 'on', w.reloadT > 0);
-    this.slotEls.forEach((el, i) => this.cls(el, 'on', i === w.cur));
+    this.slotEls.forEach((el) => this.cls(el, 'on', Number(el.dataset.w) === w.cur));
     // スキル
     const pips = this.skDash.querySelectorAll('.pips i');
     pips.forEach((el, i) => {
       const f = i < p.dashCharges ? 1 : i === p.dashCharges ? p.dashRecharge / 2 : 0;
       el.style.setProperty('--p', f);
     });
-    this.skill(this.skGrapple, p.grappleCD, GRAPPLE_CD, p.grapple.active);
-    this.skill(this.skShock, p.shockCD, SHOCK_CD, false);
+    this.skill(this.skGrapple, p.grappleCD, p.char.grappleCD, p.grapple.active);
+    this.skill(this.skShock, p.shockCD, p.char.skillCD, g.enemies.scanT > 0);
+    const um = Math.floor(p.ultMeter);
+    this.skUlt.style.setProperty('--p', p.ultMeter / 100);
+    this.cls(this.skUlt, 'ready', um >= 100);
+    this.cls(this.skUlt, 'active', p.overdriveT > 0 || !!p.meteor || g.enemySlowT > 0 || g.combat.shields.length > 0);
+    this.txt('um', this.skUlt.querySelector('.sk-num'), um >= 100 ? 'READY' : um + '%');
     const em = Math.floor(p.echoMeter);
     this.skEcho.style.setProperty('--p', p.echoMeter / 100);
     this.cls(this.skEcho, 'ready', em >= 100 && !g.echo.active);
@@ -176,8 +193,10 @@ export class UI {
     this.cls(this.rec, 'play', g.echo.active);
     // タッチボタンのクールダウン
     if (g.isTouch) {
-      $('tbHook').style.setProperty('--cd', p.grappleCD / GRAPPLE_CD);
-      $('tbShock').style.setProperty('--cd', p.shockCD / SHOCK_CD);
+      $('tbHook').style.setProperty('--cd', p.grappleCD / p.char.grappleCD);
+      $('tbShock').style.setProperty('--cd', p.shockCD / p.char.skillCD);
+      $('tbUlt').style.setProperty('--cd', 1 - p.ultMeter / 100);
+      this.cls($('tbUlt'), 'ready', um >= 100);
       $('tbEcho').style.setProperty('--cd', 1 - p.echoMeter / 100);
       this.cls($('tbEcho'), 'ready', em >= 100);
       this.cls($('tbAds'), 'on', g.input.adsToggle);

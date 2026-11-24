@@ -6,7 +6,7 @@ const KEYMAP = {
   KeyC: 'slide', ControlLeft: 'slide',
   KeyE: 'grapple', KeyF: 'shock', KeyQ: 'echo', KeyR: 'reload',
   Digit1: 'w1', Digit2: 'w2', Digit3: 'w3', Digit4: 'w4', Digit5: 'w5',
-  KeyV: 'ads',
+  KeyV: 'ads', KeyX: 'ult',
   KeyP: 'pause',
 };
 

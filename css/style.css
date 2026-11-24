@@ -365,3 +365,68 @@ body.is-portrait #tbReload { right: calc(182px + env(safe-area-inset-right)); bo
 body.is-portrait #tbAds { width: 48px; height: 48px; right: calc(108px + env(safe-area-inset-right)); bottom: calc(160px + env(safe-area-inset-bottom)); }
 body.is-portrait #tbSwap { right: calc(172px + env(safe-area-inset-right)); bottom: calc(150px + env(safe-area-inset-bottom)); }
 body.is-portrait #tutorial { bottom: calc(240px + env(safe-area-inset-bottom)); width: 90vw; }
+
+/* ===== 必殺技ゲージ ===== */
+.skill.ult { --uc: #3ee8ff; width: 70px; height: 70px; border-color: color-mix(in srgb, var(--uc) 50%, transparent); }
+.skill.ult .sk-fill { background: linear-gradient(0deg, var(--uc), rgba(255,255,255,.25)); opacity: .75; }
+.skill.ult .sk-num { font-size: 10px; margin-top: 28px; }
+.skill.ult.ready { border-color: #fff; box-shadow: 0 0 22px var(--uc); animation: pulse 1s infinite; }
+.skill.ult.active { box-shadow: 0 0 30px var(--uc); }
+#hud.chrono #vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(255,58,216,.35) 100%); }
+#hud.overdrive #vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(62,232,255,.35) 100%); }
+#tbUlt { right: calc(212px + env(safe-area-inset-right)); border-color: var(--char, #3ee8ff); }
+#tbUlt.ready { background: rgba(255,255,255,.25); box-shadow: 0 0 16px var(--char, #3ee8ff); animation: pulse 1s infinite; }
+body.touch #tbUlt { right: calc(184px + env(safe-area-inset-right)); }
+
+/* ===== キャラ選択 ===== */
+#charSelect { background: linear-gradient(180deg, rgba(5,3,15,.75), rgba(5,3,15,.92)); }
+.cs-wrap { width: min(1100px, 94vw); max-height: 94vh; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: 10px 0; }
+.cs-head h2 { font-size: 28px; font-weight: 900; letter-spacing: .15em; }
+.cs-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.cs-card { --c: #3ee8ff; position: relative; text-align: left; padding: 16px 14px 14px; background: linear-gradient(160deg, color-mix(in srgb, var(--c) 22%, transparent), rgba(10,10,28,.85) 60%); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); transition: transform .15s, box-shadow .2s; overflow: hidden; }
+.cs-card:hover { transform: translateY(-3px); }
+.cs-card.on { border-color: var(--c); box-shadow: 0 0 26px color-mix(in srgb, var(--c) 50%, transparent), inset 0 0 0 1px var(--c); }
+.cs-card .cs-role { font-size: 11px; letter-spacing: .2em; color: var(--c); font-weight: 700; }
+.cs-card .cs-name { font-family: var(--fd); font-size: 24px; font-weight: 900; letter-spacing: .08em; margin: 4px 0 2px; }
+.cs-card .cs-kana { font-size: 11px; color: var(--dim); }
+.cs-card .cs-sil { position: absolute; right: -6px; bottom: -10px; width: 70px; height: 110px; opacity: .55; }
+.cs-card .cs-sil svg { width: 100%; height: 100%; }
+.cs-card .cs-hp { margin-top: 10px; font-family: var(--fd); font-size: 11px; color: #cdd5f0; }
+.cs-detail { background: var(--panel); border: 1px solid var(--line); padding: 16px 18px; display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 14px 20px; font-size: 13px; line-height: 1.7; }
+.cs-detail h4 { font-family: var(--fd); font-size: 11px; letter-spacing: .25em; color: var(--dim); margin-bottom: 4px; font-weight: 500; }
+.cs-detail b { color: #fff; }
+.cs-detail .big { font-family: var(--fd); font-size: 30px; font-weight: 900; letter-spacing: .1em; }
+.cs-detail .wtag { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 8px; border: 1px solid var(--wc); color: var(--wc); font-size: 12px; }
+.cs-btns { display: flex; gap: 10px; justify-content: flex-end; }
+.cs-btns .mbtn { width: 180px; }
+@media (max-width: 900px), (max-height: 520px) {
+  .cs-list { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .cs-card { padding: 8px 8px; }
+  .cs-card .cs-name { font-size: 15px; }
+  .cs-card .cs-sil, .cs-card .cs-kana { display: none; }
+  .cs-head h2 { font-size: 18px; }
+  .cs-head .kicker { display: none; }
+  .cs-detail { grid-template-columns: 1fr 1fr; font-size: 11px; padding: 10px 12px; gap: 6px 12px; line-height: 1.5; }
+  .cs-detail .big { font-size: 20px; }
+  .cs-wrap { gap: 8px; }
+  .cs-btns .mbtn { width: 130px; padding: 8px; }
+}
+body.is-portrait .cs-list { grid-template-columns: repeat(2, 1fr); }
+body.is-portrait .cs-detail { grid-template-columns: 1fr; }
+.cs-btns { position: sticky; bottom: 0; padding: 8px 0 2px; background: linear-gradient(0deg, rgba(5,3,15,.95) 60%, transparent); }
+@media (max-height: 520px) and (orientation: landscape) {
+  .cs-detail { grid-template-columns: 1.1fr 1fr 1fr; }
+  .cs-head h2 { font-size: 15px; }
+  .cs-card .cs-hp { margin-top: 2px; }
+}
+/* キャラ選択：右側をあけてアバターを見せる */
+@media (min-width: 901px) and (min-height: 521px) {
+  #charSelect { background: linear-gradient(90deg, rgba(5,3,15,.92) 0%, rgba(5,3,15,.8) 55%, rgba(5,3,15,0) 75%); justify-content: flex-start; padding-left: 4vw; }
+  .cs-wrap { width: min(760px, 60vw); }
+  .cs-list { grid-template-columns: repeat(2, 1fr); }
+  .cs-detail { grid-template-columns: 1fr 1fr; }
+  .cs-detail > div:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 900px), (max-height: 520px) {
+  #charSelect { background: linear-gradient(90deg, rgba(5,3,15,.9), rgba(5,3,15,.78)); }
+}

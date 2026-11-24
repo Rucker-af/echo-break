@@ -1,6 +1,7 @@
 // プレイヤー：移動（ダッシュ・スライド・二段ジャンプ・フック）とカメラ
 import * as THREE from 'three';
 import { clamp, damp } from './utils.js';
+import { CHARACTERS } from './characters.js';
 
 export const GRAV = 26;
 const SPEED = 10.5, ACCEL = 12, AIR_ACCEL = 2.8, FRICTION = 7;
@@ -21,22 +22,26 @@ export class Player {
     this.rope = new THREE.Mesh(ropeGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3ee8ff).multiplyScalar(3) }));
     this.rope.visible = false; this.rope.frustumCulled = false;
     game.scene.add(this.rope);
-    this.reset(new THREE.Vector3(0, 5, 0), 0);
+    this.char = CHARACTERS[0];
+    this.reset(new THREE.Vector3(0, 5, 0), 0, CHARACTERS[0]);
   }
 
   get pos() { return this.body.pos; }
   get vel() { return this.body.vel; }
 
-  reset(pos, yaw) {
+  reset(pos, yaw, char) {
+    if (char) this.char = char;
+    const c = this.char;
     const b = this.body;
     b.pos.copy(pos); b.vel.set(0, 0, 0); b.h = 1.8; b.onGround = false;
     this.yaw = yaw; this.pitch = 0; this.recoil = 0; this.roll = 0;
-    this.health = 100; this.maxHealth = 100; this.alive = true; this.lastDamage = -99;
+    this.health = c.hp; this.maxHealth = c.hp; this.alive = true; this.lastDamage = -99;
     this.jumpsLeft = 1; this.coyote = 0; this.jumpBuffer = 0; this.slideBuffer = 0; this.airT = 0;
-    this.dashCharges = 2; this.dashRecharge = 0; this.dashT = 0;
+    this.dashMax = c.dashMax; this.dashCharges = c.dashMax; this.dashRecharge = 0; this.dashT = 0;
     this.sliding = false; this.slideT = 0;
     this.grapple.active = false; this.grappleCD = 0; this.shockCD = 0;
-    this.echoMeter = 0;
+    this.echoMeter = 0; this.ultMeter = 0;
+    this.overdriveT = 0; this.meteor = null;
     this.eye = 1.62; this.landDip = 0; this.fovKick = 0; this.strafe = 0;
     this.lookAccum = 0; this.moveAccum = 0;
     this.rope.visible = false;
@@ -80,7 +85,7 @@ export class Player {
     this.grapple.active = true;
     this.grapple.anchor.copy(hit.point).addScaledVector(hit.normal, 0.5);
     this.grapple.time = 0;
-    this.grappleCD = GRAPPLE_CD;
+    this.grappleCD = this.char.grappleCD;
     this.jumpsLeft = 1;
     if (this.sliding) this.endSlide();
     this.body.vel.y = Math.max(this.body.vel.y, 3);
@@ -115,7 +120,7 @@ export class Player {
     let wl = _w.length();
     if (wl > 1) { _w.divideScalar(wl); wl = 1; }
     if (wl > 0.001) _wd.copy(_w).divideScalar(wl); else _wd.set(0, 0, 0);
-    const wishSpeed = SPEED * wl;
+    const wishSpeed = this.moveSpeed() * wl;
     this.strafe = ax;
 
     // タイマー
@@ -124,20 +129,31 @@ export class Player {
     this.slideBuffer = input.pressed('slide') ? 0.25 : this.slideBuffer - dt;
     this.grappleCD = Math.max(0, this.grappleCD - dt);
     this.shockCD = Math.max(0, this.shockCD - dt);
-    if (this.dashCharges < 2) {
+    if (this.dashCharges < this.dashMax) {
       this.dashRecharge += dt;
       if (this.dashRecharge >= DASH_CHARGE) { this.dashCharges++; this.dashRecharge = 0; }
     }
     this.echoMeter = Math.min(100, this.echoMeter + dt * 1.3);
+    this.ultMeter = Math.min(100, this.ultMeter + dt * 1.0);
+    if (this.overdriveT > 0) this.overdriveT -= dt;
 
     // スキル
     if (input.pressed('grapple')) this.toggleGrapple();
     if (input.pressed('shock')) {
-      if (this.shockCD <= 0) { this.shockCD = SHOCK_CD; g.combat.shockwave(); } else g.audio.play('empty');
+      if (this.shockCD <= 0) {
+        this.shockCD = this.char.skillCD;
+        if (this.char.skill === 'scan') g.enemies.scan(6);
+        else g.combat.shockwave(this.char.shockPower);
+      } else g.audio.play('empty');
     }
     if (input.pressed('echo')) {
       if (this.echoMeter >= 100 && !g.echo.active) { if (g.echo.activate()) this.echoMeter = 0; }
       else { g.audio.play('empty'); g.ui.toast(g.echo.active ? 'エコー再生中' : `ECHO チャージ中 ${Math.floor(this.echoMeter)}%`); }
+    }
+
+    if (input.pressed('ult')) {
+      if (this.ultMeter >= 100 && !this.meteor) { this.ultMeter = 0; this.activateUlt(); }
+      else { g.audio.play('empty'); g.ui.toast(`${this.char.ultName} チャージ中 ${Math.floor(this.ultMeter)}%`); }
     }
 
     // ジャンプ
@@ -153,7 +169,7 @@ export class Player {
       } else if (this.jumpsLeft > 0) {
         this.jumpsLeft--; b.vel.y = DJUMP; jumped = true; this.jumpBuffer = 0;
         if (wl > 0.1) {
-          const hs = Math.max(Math.hypot(b.vel.x, b.vel.z), SPEED);
+          const hs = Math.max(Math.hypot(b.vel.x, b.vel.z), this.moveSpeed());
           b.vel.x = _wd.x * hs; b.vel.z = _wd.z * hs;
         }
         g.effects.ring(_t.set(b.pos.x, b.pos.y + 0.1, b.pos.z), 0x8be9ff, 1.8, 0.35);
@@ -166,7 +182,7 @@ export class Player {
       const d = wl > 0.1 ? _wd : _f;
       b.vel.x = d.x * DASH_SPEED; b.vel.z = d.z * DASH_SPEED; b.vel.y = Math.max(b.vel.y * 0.2, 0.8);
       this.dashT = DASH_TIME; this.dashCharges--;
-      if (this.dashCharges === 1) this.dashRecharge = 0;
+      if (this.dashCharges === this.dashMax - 1) this.dashRecharge = 0;
       if (this.sliding) { this.sliding = false; b.h = 1.8; }
       this.releaseGrapple();
       this.fovKick = 11;
@@ -195,7 +211,16 @@ export class Player {
     }
 
     // 速度の更新
-    if (this.dashT > 0) {
+    if (this.meteor) {
+      const m = this.meteor; m.t += dt;
+      if (m.phase === 'rise') {
+        b.vel.x *= 0.95; b.vel.z *= 0.95;
+        b.vel.y = Math.max(b.vel.y - GRAV * 0.6 * dt, 0);
+        if (m.t > 0.55) { m.phase = 'slam'; m.t = 0; b.vel.set(_f.x * 6, -46, _f.z * 6); g.audio.play('dash'); this.fovKick = 14; }
+      } else if (b.onGround || m.t > 2) {
+        this.meteorImpact();
+      }
+    } else if (this.dashT > 0) {
       this.dashT -= dt;
       if (this.dashT <= 0) {
         const s = Math.hypot(b.vel.x, b.vel.z), cap = 15;
@@ -258,6 +283,41 @@ export class Player {
     if (b.pos.y < -30) { b.pos.set(0, 5.2, 0); b.vel.set(0, 0, 0); }
     if (g.time - this.lastDamage > 4.5 && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + 20 * dt);
     this.chest.set(b.pos.x, b.pos.y + b.h * 0.68, b.pos.z);
+  }
+
+  moveSpeed() { return SPEED * this.char.speed * (this.overdriveT > 0 ? 1.3 : 1); }
+
+  // 必殺技
+  activateUlt() {
+    const g = this.game, b = this.body, c = this.char;
+    g.audio.play('echo');
+    g.ui.center(c.ultName, '', 1.2);
+    g.ui.flash(`rgba(${(c.color >> 16) & 255},${(c.color >> 8) & 255},${c.color & 255},0.35)`);
+    if (c.ult === 'overdrive') {
+      this.overdriveT = 6;
+      this.fovKick = 10;
+    } else if (c.ult === 'meteor') {
+      this.releaseGrapple();
+      if (this.sliding) { this.sliding = false; b.h = 1.8; }
+      this.meteor = { phase: 'rise', t: 0 };
+      b.vel.y = 17;
+      g.effects.ring(_t.set(b.pos.x, b.pos.y + 0.1, b.pos.z), c.color, 4, 0.5);
+    } else if (c.ult === 'chrono') {
+      g.enemySlowT = 5;
+    } else if (c.ult === 'bulwark') {
+      g.combat.spawnShield(this);
+    }
+    g.emit('ult', { id: c.ult });
+  }
+
+  meteorImpact() {
+    const g = this.game, b = this.body, c = this.char;
+    this.meteor = null;
+    const p = new THREE.Vector3(b.pos.x, b.pos.y + 0.5, b.pos.z);
+    g.combat.explode(p, 8, 130, 'player', c.color, { noSelf: true });
+    g.effects.ring(new THREE.Vector3(b.pos.x, b.pos.y + 0.15, b.pos.z), c.color, 10, 0.6);
+    g.shake(0.7);
+    b.vel.set(0, 3, 0);
   }
 
   updateRope() {

@@ -16,7 +16,9 @@ import { EchoSystem } from './echo.js';
 import { UI } from './ui.js';
 import { WaveMode, TutorialMode } from './modes.js';
 import { AudioFX } from './audio.js';
-import { damp } from './utils.js';
+import { damp, hex } from './utils.js';
+import { CHARACTERS, TRAINEE, getCharacter } from './characters.js';
+import { Avatars } from './avatars.js';
 
 const DIFF = [
   { name: 'EASY', dmg: 0.5, rate: 0.7, acc: 1.7, hp: 0.8 },
@@ -54,12 +56,21 @@ class Game {
     this.score = 0; this.combo = 0; this.comboT = 0; this.deathT = 0;
     this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0 };
     this.diff = DIFF[1];
+    this.enemySlowT = 0;
+    this.charId = load('eb_char', 'vector');
 
     this.audio = new AudioFX();
     this.audio.setVolume(this.settings.volume);
     this.input = new Input(this);
     this.effects = new Effects(this);
     this.world = new World(this);
+    this.avatars = new Avatars(this);
+    // キャラ選択用のライト（普段は0。数を変えるとシェーダーの作り直しが起きるので常に置く）
+    this.showLight = new THREE.DirectionalLight(0xffffff, 0);
+    this.showLight.position.set(2, 9, 9);
+    this.showLight.target.position.set(0, 5.9, 0);
+    this.scene.add(this.showLight, this.showLight.target);
+    this.menuView = 'home';
     this.enemies = new EnemyManager(this);
     this.combat = new Combat(this);
     this.echo = new EchoSystem(this);
@@ -79,7 +90,7 @@ class Game {
     requestAnimationFrame(this.loop);
     const loadText = document.getElementById('loadText');
     if (loadText) loadText.textContent = 'LOADING TEXTURES…';
-    Promise.race([this.world.ready, new Promise((r) => setTimeout(r, 9000))])
+    Promise.race([Promise.all([this.world.ready, this.avatars.ready]), new Promise((r) => setTimeout(r, 9000))])
       .then(() => { this.applyDetail(); try { this.renderer.compile(this.scene, this.camera); } catch (e) { /* 失敗しても続行 */ } })
       .then(() => setTimeout(() => { if (this.state === 'menu') this.ui.showScreen('home'); }, 200));
     this.refreshHome();
@@ -180,7 +191,9 @@ class Game {
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.state === 'playing' && !this.noAutoPause) this.pause(); });
 
     const click = (id, fn) => $(id).addEventListener('click', () => { this.audio.init(); this.audio.play('ui'); fn(); });
-    click('btnBattle', () => this.startMode('wave'));
+    click('btnBattle', () => this.openCharSelect());
+    click('btnCsBack', () => { this.hideShowcase(); this.ui.showScreen('home'); });
+    click('btnDeploy', () => this.startMode('wave'));
     click('btnTutorial', () => this.startMode('tutorial'));
     click('btnSettings', () => { this.settingsBack = 'home'; this.openSettings(); });
     click('btnSettingsBack', () => this.ui.showScreen(this.settingsBack));
@@ -189,7 +202,7 @@ class Game {
     click('btnQuit', () => this.toHome());
     click('btnRetry', () => this.startMode(this.mode || 'wave'));
     click('btnHome', () => this.toHome());
-    click('btnTutToBattle', () => this.startMode('wave'));
+    click('btnTutToBattle', () => this.openCharSelect());
     click('btnTutHome', () => this.toHome());
     document.querySelectorAll('#diffSel button').forEach((b) => b.addEventListener('click', () => {
       this.diffIndex = Number(b.dataset.d); store('eb_diff', String(this.diffIndex));
@@ -217,8 +230,8 @@ class Game {
     }));
     this.refreshSettings();
     // 操作説明
-    const pc = [['WASD', '移動'], ['マウス', '視点'], ['左クリック', '射撃'], ['右クリック / V', 'エイム（ADS）'], ['SPACE', 'ジャンプ / 二段'], ['SHIFT', 'ダッシュ'], ['C', 'スライディング'], ['E', 'グラップルフック'], ['F', 'ショックウェーブ'], ['Q', 'ECHO 発動'], ['R', 'リロード'], ['1-5 / ホイール', '武器切替']];
-    const tc = [['左スティック', '移動'], ['右側ドラッグ', '視点'], ['FIRE', '押したまま狙える'], ['ADS', 'エイム切替'], ['JUMP', 'ジャンプ / 二段'], ['DASH', 'ダッシュ'], ['SLIDE', 'スライディング'], ['HOOK', 'グラップル'], ['SHOCK', '衝撃波'], ['ECHO', 'エコー発動'], ['⇄', '武器切替']];
+    const pc = [['WASD', '移動'], ['マウス', '視点'], ['左クリック', '射撃'], ['右クリック / V', 'エイム（ADS）'], ['SPACE', 'ジャンプ / 二段'], ['SHIFT', 'ダッシュ'], ['C', 'スライディング'], ['E', 'グラップルフック'], ['F', 'ショックウェーブ'], ['Q', 'ECHO 発動'], ['X', '必殺技（ULT）'], ['R', 'リロード'], ['1-5 / ホイール', '武器切替']];
+    const tc = [['左スティック', '移動'], ['右側ドラッグ', '視点'], ['FIRE', '押したまま狙える'], ['ADS', 'エイム切替'], ['JUMP', 'ジャンプ / 二段'], ['DASH', 'ダッシュ'], ['SLIDE', 'スライディング'], ['HOOK', 'グラップル'], ['SHOCK', '衝撃波'], ['ECHO', 'エコー発動'], ['ULT', '必殺技'], ['⇄', '武器切替']];
     $('controlsList').innerHTML = (this.isTouch ? tc : pc).map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join('');
     this.checkOrientation();
   }
@@ -242,6 +255,77 @@ class Game {
   }
 
   openSettings() { this.ui.showScreen('settings'); }
+
+  // ---- キャラ選択 ----
+  openCharSelect() {
+    const list = document.getElementById('csList');
+    if (!list.children.length) {
+      list.innerHTML = CHARACTERS.map((c) => `
+        <button class="cs-card" data-id="${c.id}" style="--c:${hex(c.color)}">
+          <div class="cs-role">${c.role}</div>
+          <div class="cs-name">${c.name}</div>
+          <div class="cs-kana">${c.kana}</div>
+          <div class="cs-hp">HP ${c.hp}</div>
+          <div class="cs-sil">${this.silhouette(c)}</div>
+        </button>`).join('');
+      list.querySelectorAll('.cs-card').forEach((b) => b.addEventListener('click', () => {
+        this.charId = b.dataset.id; store('eb_char', this.charId); this.audio.init(); this.audio.play('ui'); this.renderCharDetail();
+      }));
+    }
+    this.renderCharDetail();
+    this.menuView = 'select';
+    this.ui.showScreen('charSelect');
+  }
+
+  // キャラ選択画面でタワーの上にアバターを立たせる
+  setShowcase(char) {
+    if (this.showcase && this.showcase.id === char.id) return;
+    if (this.showcase) this.scene.remove(this.showcase.av.root);
+    const av = this.avatars.create(char);
+    if (!av) { this.showcase = null; return; }
+    av.root.position.set(0, 5, 0);
+    this.scene.add(av.root);
+    av.play('Wave', 0.1, true);
+    this.showcase = { id: char.id, av, backT: (av.actions.Wave.getClip().duration || 2) - 0.2 };
+  }
+
+  placeShowcaseCamera(narrow) {
+    if (narrow) { this.camera.position.set(0, 6.3, 6.5); this.camera.lookAt(0, 6.55, 0); }
+    else { this.camera.position.set(-0.6, 6.2, 5.8); this.camera.lookAt(-1.75, 5.95, 0); }
+    if (this.camera.fov !== 36) { this.camera.fov = 36; this.camera.updateProjectionMatrix(); }
+    this.showLight.intensity = 1.4;
+  }
+
+  hideShowcase() {
+    this.menuView = 'home';
+    this.showLight.intensity = 0;
+    this.camera.fov = this.settings.fov; this.camera.updateProjectionMatrix();
+    if (this.showcase) { this.scene.remove(this.showcase.av.root); this.showcase = null; }
+  }
+
+  silhouette(c) {
+    const col = hex(c.color);
+    const wide = c.id === 'boulder' ? 1.35 : c.id === 'haken' ? 0.85 : 1;
+    const w = (n) => (n * wide).toFixed(1);
+    return `<svg viewBox="0 0 60 100"><g fill="${col}" opacity=".8">
+      <rect x="${30 - 8}" y="6" width="16" height="15" rx="3"/>
+      <rect x="${30 - w(14)}" y="24" width="${w(28)}" height="30" rx="4"/>
+      <rect x="${30 - w(14) - 7}" y="26" width="6" height="28" rx="3"/><rect x="${30 + w(14) + 1}" y="26" width="6" height="28" rx="3"/>
+      <rect x="${30 - 11}" y="56" width="9" height="38" rx="3"/><rect x="${30 + 2}" y="56" width="9" height="38" rx="3"/>
+      </g><rect x="${30 - 6}" y="11" width="12" height="3" fill="#fff"/></svg>`;
+  }
+
+  renderCharDetail() {
+    const c = getCharacter(this.charId);
+    this.setShowcase(c);
+    document.querySelectorAll('.cs-card').forEach((b) => b.classList.toggle('on', b.dataset.id === c.id));
+    const W = c.weapons.map((i) => `<span class="wtag" style="--wc:${hex(WEAPONS[i].color)}">${WEAPONS[i].name}</span>`).join('');
+    const key = this.isTouch ? { skill: c.skill === 'scan' ? 'SCAN' : 'SHOCK', ult: 'ULT', echo: 'ECHO' } : { skill: 'F', ult: 'X', echo: 'Q' };
+    document.getElementById('csDetail').innerHTML = `
+      <div><div class="big" style="color:${hex(c.color)}">${c.name}</div><div>${c.role} ・ HP <b>${c.hp}</b> ・ 移動 <b>${Math.round(c.speed * 100)}%</b> ・ ダッシュ <b>${c.dashMax}</b>回</div><div>${c.desc}</div></div>
+      <div><h4>WEAPONS</h4>${W}<h4 style="margin-top:8px">SKILL [${key.skill}]</h4><b>${c.skillName}</b>${c.skill === 'scan' ? '：6秒間、壁の向こうの敵に目印が付く' : '：周りの敵と弾を吹き飛ばす'}</div>
+      <div><h4>ULTIMATE [${key.ult}]</h4><b>${c.ultName}</b>：${c.ultDesc}<h4 style="margin-top:8px">ECHO [${key.echo}]</h4><b>${c.echoName}</b>：${c.echoDesc}</div>`;
+  }
   saveSettings() { store('eb_settings', JSON.stringify(this.settings)); }
 
   requestLock() {
@@ -263,18 +347,22 @@ class Game {
   // ---- 状態の切り替え ----
   startMode(mode) {
     this.audio.init();
+    this.hideShowcase();
     this.mode = mode;
-    this.enemies.clear(); this.combat.clear(); this.effects.clear(); this.echo.reset(); this.weapons.reset();
+    this.enemies.clear(); this.combat.clear(); this.effects.clear(); this.echo.reset();
+    this.enemySlowT = 0;
+    const ch = mode === 'wave' ? getCharacter(this.charId) : TRAINEE;
+    this.weapons.reset(ch.weapons);
     this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0 };
     this.score = 0; this.combo = 0; this.comboT = 0; this.time = 0; this.timeScale = 1; this.slowT = 0; this.trauma = 0;
     this.camera.fov = this.settings.fov;
     if (mode === 'wave') {
       this.diff = DIFF[this.diffIndex];
-      this.player.reset(new THREE.Vector3(0, 5.01, 0), 0);
+      this.player.reset(new THREE.Vector3(0, 5.01, 0), 0, ch);
       this.waves.start();
     } else {
       this.diff = DIFF[0];
-      this.player.reset(new THREE.Vector3(0, 0, 13), 0);
+      this.player.reset(new THREE.Vector3(0, 0, 13), 0, ch);
       this.tutorial.start();
     }
     this.ui.enterGame(mode);
@@ -360,7 +448,10 @@ class Game {
   getTargetFor(e) { return this.echo.active && e.preferEcho ? this.echo.target : this.playerTarget; }
 
   onEnemyDamaged(e, amount, owner) {
-    if (owner === 'player') this.player.echoMeter = Math.min(100, this.player.echoMeter + amount * 0.28);
+    if (owner === 'player') {
+      this.player.echoMeter = Math.min(100, this.player.echoMeter + amount * 0.28);
+      this.player.ultMeter = Math.min(100, this.player.ultMeter + amount * 0.18);
+    }
   }
 
   onHitFeedback(e, dmg, head, point, owner, killed) {
@@ -376,6 +467,7 @@ class Game {
     if (e.type !== 'dummy') this.stats.kills++;
     if (head) this.stats.heads++;
     if (owner === 'echo') this.stats.echoKills++;
+    if (e.type !== 'dummy') this.player.ultMeter = Math.min(100, this.player.ultMeter + 6);
     if (e.T.score) {
       this.combo++; this.comboT = 3.5;
       const mult = 1 + Math.min(this.combo - 1, 10) * 0.1;
@@ -410,9 +502,18 @@ class Game {
       this.update(raw * this.timeScale, raw);
     } else if (this.state === 'menu') {
       this.menuT += raw;
-      const t = this.menuT * 0.07;
-      this.camera.position.set(Math.cos(t) * 36, 12 + Math.sin(this.menuT * 0.3) * 2, Math.sin(t) * 36);
-      this.camera.lookAt(0, 5, 0);
+      if (this.menuView === 'select' && this.showcase) {
+        const sc = this.showcase;
+        const narrow = innerWidth < innerHeight * 1.2;
+        this.placeShowcaseCamera(narrow);
+        sc.av.mixer.update(raw);
+        sc.av.root.rotation.y = Math.PI + Math.sin(this.menuT * 0.6) * 0.35;
+        if (sc.backT > 0) { sc.backT -= raw; if (sc.backT <= 0) sc.av.play('Idle', 0.4); }
+      } else {
+        const t = this.menuT * 0.07;
+        this.camera.position.set(Math.cos(t) * 36, 12 + Math.sin(this.menuT * 0.3) * 2, Math.sin(t) * 36);
+        this.camera.lookAt(0, 5, 0);
+      }
       this.world.update(raw);
       this.effects.update(raw);
     }
@@ -427,7 +528,8 @@ class Game {
     this.weapons.update(dt, this.input, this.player);
     this.echo.record(this.time);
     this.echo.update(dt);
-    this.enemies.update(dt);
+    if (this.enemySlowT > 0) this.enemySlowT -= dt;
+    this.enemies.update(dt * (this.enemySlowT > 0 ? 0.3 : 1));
     this.combat.update(dt);
     this.effects.update(dt);
     this.world.update(dt);
@@ -445,6 +547,8 @@ class Game {
       this.camera.rotation.z += Math.sin(t * 2.3 + 2) * 0.02 * s;
     }
     this.effects.setScale(innerHeight * this.renderer.getPixelRatio(), this.camera.fov);
+    this.ui.cls(this.ui.hud, 'chrono', this.enemySlowT > 0);
+    this.ui.cls(this.ui.hud, 'overdrive', this.player.overdriveT > 0);
     this.ui.update(raw);
     if (!this.player.alive && this.state === 'playing') { this.deathT -= raw; if (this.deathT <= 0) this.endGame(); }
   }

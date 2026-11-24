@@ -143,17 +143,18 @@ export class WeaponSystem {
   get def() { return this.defs[this.cur]; }
   get st() { return this.state[this.cur]; }
 
-  reset() {
+  reset(loadout = [0, 1, 2, 3, 4]) {
+    this.loadout = loadout.slice();
     this.state = WEAPONS.map((d) => ({ ammo: d.mag }));
-    this.cur = 0; this.switchTo = -1;
+    this.cur = this.loadout[0]; this.switchTo = -1;
     this.cooldown = 0; this.reloadT = 0; this.switchT = 0;
     this.adsT = 0; this.kick = 0; this.swayX = 0; this.swayY = 0; this.bobPhase = 0; this.flashT = 0; this.tilt = 0;
     this.spreadNow = 0.016;
-    this.models.forEach((m, i) => { m.group.visible = i === 0; m.flash.visible = false; });
+    this.models.forEach((m, i) => { m.group.visible = i === this.cur; m.flash.visible = false; });
   }
 
   select(i) {
-    if (i < 0 || i >= this.defs.length) return;
+    if (i < 0 || i >= this.defs.length || !this.loadout.includes(i)) return;
     if (i === this.cur && this.switchT <= 0) return;
     if (i === this.switchTo) return;
     this.switchTo = i; this.switchT = 0.32; this.reloadT = 0;
@@ -162,17 +163,17 @@ export class WeaponSystem {
 
   startReload() {
     if (this.reloadT > 0 || this.switchT > 0 || this.st.ammo >= this.def.mag) return;
-    this.reloadT = this.def.reload;
+    this.reloadT = this.def.reload * (this.game.player.overdriveT > 0 ? 0.5 : 1);
     this.game.audio.play('reload');
   }
 
   update(dt, input, player) {
-    const n = this.defs.length;
+    const L = this.loadout, n = L.length;
     this.cooldown -= dt;
-    for (let i = 0; i < n; i++) if (input.pressed('w' + (i + 1))) this.select(i);
-    const base = this.switchTo >= 0 ? this.switchTo : this.cur;
-    if (input.pressed('next') || input.wheel > 0) this.select((base + 1) % n);
-    if (input.wheel < 0) this.select((base + n - 1) % n);
+    for (let k = 0; k < n; k++) if (input.pressed('w' + (k + 1))) this.select(L[k]);
+    const bi = Math.max(0, L.indexOf(this.switchTo >= 0 ? this.switchTo : this.cur));
+    if (input.pressed('next') || input.wheel > 0) this.select(L[(bi + 1) % n]);
+    if (input.wheel < 0) this.select(L[(bi + n - 1) % n]);
 
     if (this.switchT > 0) {
       this.switchT -= dt;
@@ -210,7 +211,7 @@ export class WeaponSystem {
   fire(player) {
     const g = this.game, def = this.def;
     this.st.ammo--;
-    this.cooldown = Math.max(this.cooldown, 0) + 60 / def.rpm;
+    this.cooldown = Math.max(this.cooldown, 0) + (60 / def.rpm) * (player.overdriveT > 0 ? 0.6 : 1);
     const cam = g.camera;
     cam.getWorldPosition(_o); cam.getWorldDirection(_d);
     const model = this.models[this.cur];

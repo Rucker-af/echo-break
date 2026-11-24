@@ -10,6 +10,7 @@ export class Combat {
     this.game = game;
     this.rockets = [];
     this.orbs = [];
+    this.shields = [];
     this.rocketGeo = new THREE.SphereGeometry(0.16, 12, 8);
     this.rocketMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb6ff3a).multiplyScalar(4) });
     this.orbGeo = new THREE.OctahedronGeometry(0.26, 1);
@@ -19,7 +20,8 @@ export class Combat {
   clear() {
     for (const r of this.rockets) this.game.scene.remove(r.mesh);
     for (const o of this.orbs) this.game.scene.remove(o.mesh);
-    this.rockets = []; this.orbs = [];
+    for (const sh of this.shields) this.game.scene.remove(sh.mesh);
+    this.rockets = []; this.orbs = []; this.shields = [];
   }
 
   spreadDir(dir, s, out) {
@@ -149,7 +151,7 @@ export class Combat {
     this.rockets.push({ pos: pos.clone(), vel: vel.clone(), def, owner, life: 4, mesh });
   }
 
-  explode(pos, radius, dmg, owner, color) {
+  explode(pos, radius, dmg, owner, color, opts = {}) {
     const g = this.game;
     const agg = new Map();
     let n = 0;
@@ -168,7 +170,7 @@ export class Combat {
       n++;
     }
     const p = g.player;
-    if (owner !== 'echo' && p.alive) {
+    if (owner !== 'echo' && !opts.noSelf && p.alive) {
       const dist = p.chest.distanceTo(pos);
       const R = radius + 0.6;
       if (dist < R) {
@@ -176,7 +178,7 @@ export class Combat {
         const dv = _v.subVectors(p.chest, pos).normalize();
         p.body.vel.addScaledVector(dv, 17 * f);
         p.body.vel.y += 5 * f;
-        if (owner === 'player') { if (f > 0.2) p.takeDamage(12 * f, pos); }
+        if (owner === 'player' && !opts.noSelf) { if (f > 0.2) p.takeDamage(12 * f, pos); }
       }
     }
     for (const [e, a] of agg) g.onHitFeedback(e, a.dmg, false, a.point, owner, a.killed);
@@ -188,10 +190,10 @@ export class Combat {
     return n;
   }
 
-  shockwave() {
+  shockwave(power = 1) {
     const g = this.game, p = g.player;
     const c = new THREE.Vector3(p.pos.x, p.pos.y + 1, p.pos.z);
-    const R = 10;
+    const R = 10 * Math.sqrt(power);
     let n = 0;
     const agg = new Map();
     for (const e of g.enemies.list) {
@@ -201,9 +203,9 @@ export class Combat {
       if (d > R + e.T.r) continue;
       const f = Math.max(0, 1 - d / (R + e.T.r));
       const dv = _v.subVectors(_c, c).normalize().clone();
-      const dm = 55 * (0.4 + 0.6 * f);
+      const dm = 55 * power * (0.4 + 0.6 * f);
       const killed = e.damage(dm, 'body', dv, 'player');
-      e.knock(dv, 22 * f + 6);
+      e.knock(dv, (22 * f + 6) * Math.min(power, 1.2));
       e.body.vel.y += 8 * f * e.T.knock;
       e.stagger = 1.2;
       agg.set(e, { dmg: dm, point: _c.clone(), killed });
@@ -226,6 +228,43 @@ export class Combat {
     g.emit('shock', { count: n, cleared });
   }
 
+  // BOULDER の必殺技：前方に敵の弾を止める盾
+  spawnShield(player) {
+    const g = this.game;
+    const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+    const n = new THREE.Vector3(-sy, 0, -cy);
+    const pos = new THREE.Vector3(player.pos.x + n.x * 2.4, player.pos.y + 1.3, player.pos.z + n.z * 2.4);
+    const W = 4.2, H = 2.8;
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(player.char.color).multiplyScalar(1.6), transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Group();
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(W, H, 6, 4), mat);
+    const wire = new THREE.Mesh(new THREE.PlaneGeometry(W, H, 6, 4), new THREE.MeshBasicMaterial({ color: new THREE.Color(player.char.color).multiplyScalar(2.5), wireframe: true, transparent: true, opacity: 0.5 }));
+    mesh.add(plane, wire);
+    mesh.position.copy(pos);
+    mesh.rotation.y = player.yaw;
+    g.scene.add(mesh);
+    this.shields.push({ mesh, mat, wire, pos, n, W, H, t: 8, max: 8 });
+    g.effects.burst(pos, player.char.color, 40, 6, 0.12, 0.5);
+    g.audio.play('shock', 0.6);
+  }
+
+  // 敵の弾が盾に当たったか（移動前 a → 移動後 b）
+  shieldBlocks(a, b) {
+    for (const sh of this.shields) {
+      const da = (a.x - sh.pos.x) * sh.n.x + (a.z - sh.pos.z) * sh.n.z;
+      const db = (b.x - sh.pos.x) * sh.n.x + (b.z - sh.pos.z) * sh.n.z;
+      if ((da > 0) === (db > 0) && Math.abs(db) > 0.25) continue;
+      const rx = -sh.n.z, rz = sh.n.x;
+      const lx = (b.x - sh.pos.x) * rx + (b.z - sh.pos.z) * rz;
+      const ly = b.y - sh.pos.y;
+      if (Math.abs(lx) < sh.W / 2 && Math.abs(ly) < sh.H / 2) {
+        sh.hit = 0.15;
+        return true;
+      }
+    }
+    return false;
+  }
+
   spawnOrb(pos) {
     const mesh = new THREE.Mesh(this.orbGeo, this.orbMat);
     mesh.position.copy(pos);
@@ -235,6 +274,14 @@ export class Combat {
 
   update(dt) {
     const g = this.game, fx = g.effects;
+    for (let i = this.shields.length - 1; i >= 0; i--) {
+      const sh = this.shields[i];
+      sh.t -= dt; sh.hit = Math.max(0, (sh.hit || 0) - dt);
+      const k = sh.t / sh.max;
+      sh.mat.opacity = 0.18 + sh.hit * 2 + (k < 0.2 ? Math.sin(g.time * 30) * 0.1 : 0);
+      sh.wire.material.opacity = 0.35 + sh.hit * 3;
+      if (sh.t <= 0) { g.scene.remove(sh.mesh); this.shields.splice(i, 1); }
+    }
     // ロケット
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i];
