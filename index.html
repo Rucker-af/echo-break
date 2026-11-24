@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07060f">
+<title>ECHO//BREAK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=3">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ===== HUD ===== -->
+<div id="hud" class="hidden">
+  <div id="vignette"></div>
+  <div id="dmgVignette"></div>
+  <div id="speed"></div>
+  <div id="scope"><div class="ring"></div><div class="lines"></div></div>
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><em></em></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="dmgDirs"></div>
+  <div id="dmgNums"></div>
+  <div id="topbar">
+    <div class="tb-side" id="waveLabel">WAVE 1</div>
+    <div class="tb-mid"><div id="scoreLabel">0</div><div id="comboLabel"></div></div>
+    <div class="tb-side right" id="enemyLabel"></div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="centerMsg"><div class="cm-title"></div><div class="cm-sub"></div></div>
+  <div id="echoBannerEl"><span>ECHO</span><small>PAST SELF DEPLOYED</small></div>
+  <div id="toastBox"></div>
+  <div id="scorePops"></div>
+  <div id="rec"><i></i><span>ECHO REC</span><b id="recTime">0.0s</b></div>
+  <div id="healthBox">
+    <div class="hp-top"><span class="hp-label">HP</span><span class="hp-num" id="hpNum">100</span></div>
+    <div class="hp-bar"><s id="hpGhost"></s><i id="hpFill"></i></div>
+  </div>
+  <div id="skills">
+    <div class="skill" id="skDash"><div class="sk-ic">DASH</div><div class="sk-key">SHIFT</div><div class="pips"><i></i><i></i></div></div>
+    <div class="skill" id="skGrapple"><div class="sk-cd"></div><div class="sk-ic">HOOK</div><div class="sk-key">E</div><b class="sk-num"></b></div>
+    <div class="skill" id="skShock"><div class="sk-cd"></div><div class="sk-ic">SHOCK</div><div class="sk-key">F</div><b class="sk-num"></b></div>
+    <div class="skill echo" id="skEcho"><div class="sk-fill"></div><div class="sk-ic">ECHO</div><div class="sk-key">Q</div><b class="sk-num"></b></div>
+  </div>
+  <div id="weaponBox">
+    <div id="ammo"><b id="ammoCur">32</b><span id="ammoMax">/ 32</span></div>
+    <div id="weaponName">VX-9</div>
+    <div id="reloadBar"><i></i><span>RELOADING</span></div>
+    <div id="slots"></div>
+  </div>
+  <div id="tutorial" class="hidden">
+    <div class="t-head"><span id="tStep">1 / 12</span><b id="tCount"></b></div>
+    <div id="tText"></div>
+    <div class="t-prog"><i id="tProg"></i></div>
+  </div>
+  <div id="clickToPlay" class="hidden"><div>クリックして操作開始</div><small>ESC で一時停止</small></div>
+  <div id="flashFx"></div>
+</div>
+
+<!-- ===== スマホ操作 ===== -->
+<div id="touch" class="hidden">
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <div id="joyHint"><span>MOVE</span></div>
+  <button class="tb" id="tbPause" data-action="pause">II</button>
+  <button class="tb fire" id="tbFire" data-action="fire">FIRE</button>
+  <button class="tb fire2" id="tbFire2" data-action="fire">FIRE</button>
+  <button class="tb" id="tbJump" data-action="jump">JUMP</button>
+  <button class="tb cd" id="tbDash" data-action="dash">DASH</button>
+  <button class="tb" id="tbSlide" data-action="slide">SLIDE</button>
+  <button class="tb" id="tbAds" data-action="ads">ADS</button>
+  <button class="tb sm" id="tbReload" data-action="reload">R</button>
+  <button class="tb sm" id="tbSwap" data-action="next">⇄</button>
+  <button class="tb sk cd" id="tbHook" data-action="grapple">HOOK</button>
+  <button class="tb sk cd" id="tbShock" data-action="shock">SHOCK</button>
+  <button class="tb sk cd echo" id="tbEcho" data-action="echo">ECHO</button>
+</div>
+
+<!-- ===== 画面 ===== -->
+<div id="loading" class="screen show">
+  <div class="logo">ECHO<em>//</em>BREAK</div>
+  <div class="loadbar"><i></i></div>
+  <p id="loadText">LOADING…</p>
+</div>
+
+<div id="home" class="screen">
+  <div class="home-wrap">
+    <div class="home-main">
+      <div class="kicker">FIRST-PERSON ARENA SHOOTER</div>
+      <div class="logo big">ECHO<em>//</em>BREAK</div>
+      <div class="tagline">過去の自分と、共に撃て。</div>
+      <div class="menu">
+        <button class="mbtn primary" id="btnBattle"><span class="mb-t">NPC戦</span><span class="mb-s">WAVE SURVIVAL — 押し寄せる機械兵を殲滅せよ</span></button>
+        <div class="diff" id="diffSel"><span>難易度</span><button data-d="0">EASY</button><button data-d="1">NORMAL</button><button data-d="2">HARD</button></div>
+        <button class="mbtn" id="btnTutorial"><span class="mb-t">チュートリアル <i class="badge">おすすめ</i></span><span class="mb-s">移動・武器・スキル・ECHOシステムを学ぶ</span></button>
+        <button class="mbtn locked" disabled><span class="mb-t">対人戦 <i class="soon">COMING SOON</i></span><span class="mb-s">オンライン対戦は今後のアップデートで追加予定</span></button>
+        <button class="mbtn" id="btnSettings"><span class="mb-t">設定</span><span class="mb-s">感度・視野角・画質・音量</span></button>
+      </div>
+      <div class="records">BEST SCORE <b id="bestScore">0</b><span class="sep">|</span>BEST WAVE <b id="bestWave">0</b></div>
+    </div>
+    <div class="home-side">
+      <div class="card echo-card">
+        <h3><i></i>ECHO SYSTEM</h3>
+        <p>あなたの直近<b>5秒</b>の動きと射撃は、常に記録されている。<b>ECHO</b> を解き放つと、過去のあなたがホログラムとして蘇り、同じ軌跡で戦う。敵はエコーに引きつけられ、再生が終わると<b>爆散</b>する。</p>
+      </div>
+      <div class="card">
+        <h3>ARSENAL</h3>
+        <ul class="arsenal">
+          <li style="--c:#3ee8ff"><b>VX-9</b> パルスライフル<small>連射・万能</small></li>
+          <li style="--c:#ff8a2a"><b>HX</b> スキャッター<small>近距離・空中で反動移動</small></li>
+          <li style="--c:#ff3ad8"><b>LANCE</b> レールガン<small>貫通・スコープ</small></li>
+          <li style="--c:#b6ff3a"><b>NOVA</b> ランチャー<small>爆発・ロケットジャンプ</small></li>
+          <li style="--c:#8c7bff"><b>CHAIN</b> アーク<small>自動追尾・連鎖電撃</small></li>
+        </ul>
+      </div>
+      <div class="card"><h3>CONTROLS</h3><div class="controls" id="controlsList"></div></div>
+    </div>
+  </div>
+  <div class="version">v0.1 PROTOTYPE</div>
+</div>
+
+<div id="settings" class="screen modal">
+  <div class="panel">
+    <h2>設定</h2>
+    <label>視点感度 <b id="vSens">1.0</b><input type="range" id="sSens" min="0.2" max="3" step="0.05"></label>
+    <label>視野角 (FOV) <b id="vFov">75</b><input type="range" id="sFov" min="60" max="100" step="1"></label>
+    <label>音量 <b id="vVol">70</b><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+    <div class="row">画質<span class="seg" id="sQuality"><button data-q="low">軽量</button><button data-q="high">高画質</button></span></div>
+    <button class="mbtn small" id="btnSettingsBack">もどる</button>
+  </div>
+</div>
+
+<div id="pause" class="screen modal">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <button class="mbtn primary small" id="btnResume">再開</button>
+    <button class="mbtn small" id="btnPauseSettings">設定</button>
+    <button class="mbtn small" id="btnQuit">ホームへ戻る</button>
+  </div>
+</div>
+
+<div id="result" class="screen modal">
+  <div class="panel wide">
+    <h2>MISSION REPORT</h2>
+    <div class="res-diff">難易度 <b id="rDiff">NORMAL</b></div>
+    <div class="res-grid">
+      <div class="big"><span>SCORE</span><b id="rScore">0</b></div>
+      <div><span>WAVE</span><b id="rWave">0</b></div>
+      <div><span>KILLS</span><b id="rKills">0</b></div>
+      <div><span>HEADSHOT</span><b id="rHeads">0</b></div>
+      <div><span>ACCURACY</span><b id="rAcc">0%</b></div>
+      <div><span>ECHO KILLS</span><b id="rEcho">0</b></div>
+    </div>
+    <div class="newrec hidden" id="rNew">NEW RECORD!</div>
+    <div class="row-btns"><button class="mbtn primary small" id="btnRetry">もう一度</button><button class="mbtn small" id="btnHome">ホームへ</button></div>
+  </div>
+</div>
+
+<div id="tutDone" class="screen modal">
+  <div class="panel">
+    <h2>TRAINING COMPLETE</h2>
+    <p class="p">すべての訓練を完了した。<br>次は本番――NPC戦で腕を試そう。</p>
+    <div class="row-btns"><button class="mbtn primary small" id="btnTutToBattle">NPC戦へ</button><button class="mbtn small" id="btnTutHome">ホームへ</button></div>
+  </div>
+</div>
+
+<div id="rotate"><div class="ic">⟳</div><p>端末を横向きにしてプレイしてください</p></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
