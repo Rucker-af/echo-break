@@ -72,7 +72,7 @@ const STEPS = [
   { title: 'スライディング', pc: '走りながら <b>C</b> で<b>スライディング</b>（2回）。そのままジャンプすると勢いが残る', touch: '走りながら <b>SLIDE</b> で<b>スライディング</b>（2回）', event: 'slide', count: 2 },
   { title: 'ジャンプパッド', pc: '光る<b>ジャンプパッド</b>に乗って、中央タワーの上へ飛ぼう', touch: '光る<b>ジャンプパッド</b>に乗って、中央タワーの上へ飛ぼう', event: 'pad', count: 1, marker: [0, 9.5] },
   { title: 'グラップルフック', pc: '<b>E</b> で<b>フック</b>を撃ち、壁や柱へ飛びつこう（2回）。もう一度押すか SPACE で解除', touch: '<b>HOOK</b> で壁や柱へ飛びつこう（2回）', event: 'grapple', count: 2 },
-  { title: '射撃', pc: '<b>左クリック</b>で射撃、<b>右クリック</b>でエイム。タワーの南にいる<b>ターゲット</b>を3体破壊', touch: '<b>FIRE を押したままドラッグ</b>で狙って撃つ。<b>ADS</b> でエイム。ターゲットを3体破壊', event: 'kill', count: 3, setup: 'front' },
+  { title: '射撃', pc: '<b>左クリック</b>で射撃、<b>右クリック</b>か <b>V</b> で構えて（ADS）光る輪の中心で狙う。タワーの南にいる<b>ターゲット</b>を3体破壊', touch: '<b>FIRE を押したままドラッグ</b>で狙って撃つ。<b>ADS</b> でエイム。ターゲットを3体破壊', event: 'kill', count: 3, setup: 'front' },
   { title: '武器', pc: '<b>1〜5 キー</b>かホイールで武器を切り替え。<b>5種類すべて</b>撃ってみよう', touch: '<b>⇄</b> か画面右下の武器名をタップして切り替え。<b>5種類すべて</b>撃とう', custom: 'weapons', count: 5 },
   { title: 'ショックウェーブ', pc: 'ターゲットに近づいて <b>F</b> で<b>ショックウェーブ</b>。周りの敵と弾を吹き飛ばす', touch: 'ターゲットに近づいて <b>SHOCK</b>。周りの敵と弾を吹き飛ばす', event: 'shockHit', count: 1, setup: 'near' },
   { title: 'ECHO', pc: '<b>ECHOシステム</b>：直近5秒の動きと射撃は常に記録されている。ターゲットを撃ちながら動いてから <b>Q</b> で<b>エコー</b>を解き放て！', touch: '<b>ECHOシステム</b>：直近5秒の行動は常に記録中。ターゲットを撃ちながら動いてから <b>ECHO</b> を押せ！', event: 'echoEnd', count: 1, setup: 'echo' },

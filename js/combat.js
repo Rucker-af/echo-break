@@ -124,7 +124,7 @@ export class Combat {
           fx.spawn(c.x, c.y, c.z, 0, 0, 0, def.color, 0.8, 0.08, 0, 0);
           hitE(cur, dmg, 'body', c, _v.subVectors(c, from).normalize().clone());
           any = true;
-          from = c; dmg *= 0.7;
+          from = c; dmg *= 0.6;
           let next = null, nd = def.chainRange;
           for (const e of g.enemies.list) {
             if (!e.isActive() || hit.has(e)) continue;

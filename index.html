@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=6">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -58,6 +58,7 @@
     <div id="weaponName">VX-9</div>
     <div id="reloadBar"><i></i><span>RELOADING</span></div>
     <div id="slots"></div>
+    <div id="adsHint">ADS（構える）：右クリック / V</div>
   </div>
   <div id="tutorial" class="hidden">
     <div class="t-head"><span id="tStep">1 / 12</span><b id="tCount"></b></div>
@@ -135,6 +136,7 @@
     <label>視点感度 <b id="vSens">1.0</b><input type="range" id="sSens" min="0.2" max="3" step="0.05"></label>
     <label>視野角 (FOV) <b id="vFov">75</b><input type="range" id="sFov" min="60" max="100" step="1"></label>
     <label>音量 <b id="vVol">70</b><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+    <div class="row">エイム（ADS）<span class="seg" id="sAds"><button data-m="hold">長押し</button><button data-m="toggle">切り替え</button></span></div>
     <div class="row">画質<span class="seg" id="sQuality"><button data-q="low">軽量</button><button data-q="high">高画質</button></span></div>
     <button class="mbtn small" id="btnSettingsBack">もどる</button>
   </div>
@@ -174,7 +176,7 @@
   </div>
 </div>
 
-<div id="rotate"><div class="ic">⟳</div><p>端末を横向きにしてプレイしてください</p></div>
+<div id="rotate"><div class="ic">⟳</div><p>横向きにするとプレイしやすくなります</p><small>回転しないときは、コントロールセンターの「画面の向きのロック」をオフにしてください</small><button class="mbtn small" id="btnRotateSkip">このまま遊ぶ</button></div>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

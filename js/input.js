@@ -6,6 +6,7 @@ const KEYMAP = {
   KeyC: 'slide', ControlLeft: 'slide',
   KeyE: 'grapple', KeyF: 'shock', KeyQ: 'echo', KeyR: 'reload',
   Digit1: 'w1', Digit2: 'w2', Digit3: 'w3', Digit4: 'w4', Digit5: 'w5',
+  KeyV: 'ads',
   KeyP: 'pause',
 };
 
@@ -59,11 +60,15 @@ export class Input {
     addEventListener('touchcancel', (e) => this.onTouchEnd(e), opt);
   }
 
-  press(a) { if (!this.down.has(a)) this.pressedSet.add(a); this.down.add(a); }
+  press(a) {
+    if (a === 'ads' && !this.isTouch && this.game.settings.adsMode === 'toggle' && !this.down.has(a)) this.adsToggle = !this.adsToggle;
+    if (!this.down.has(a)) this.pressedSet.add(a);
+    this.down.add(a);
+  }
   release(a) { this.down.delete(a); }
   isDown(a) { return this.down.has(a); }
   pressed(a) { return this.pressedSet.has(a); }
-  adsActive() { return this.isTouch ? this.adsToggle : this.down.has('ads'); }
+  adsActive() { return this.isTouch || this.game.settings.adsMode === 'toggle' ? this.adsToggle : this.down.has('ads'); }
   axisX() {
     let v = (this.down.has('right') ? 1 : 0) - (this.down.has('left') ? 1 : 0) + this.move.x;
     return Math.max(-1, Math.min(1, v));

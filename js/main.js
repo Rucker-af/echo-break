@@ -33,7 +33,7 @@ class Game {
     document.body.classList.toggle('touch', this.isTouch);
     let saved = {};
     try { saved = JSON.parse(load('eb_settings', '{}')) || {}; } catch (e) { saved = {}; }
-    this.settings = Object.assign({ sens: 1, fov: 75, volume: 0.7, quality: this.isTouch ? 'low' : 'high' }, saved);
+    this.settings = Object.assign({ sens: 1, fov: 75, volume: 0.7, quality: this.isTouch ? 'low' : 'high', adsMode: 'hold' }, saved);
     this.diffIndex = Number(load('eb_diff', '1')) || 1;
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' });
@@ -129,7 +129,9 @@ class Game {
   bindDom() {
     const $ = (id) => document.getElementById(id);
     addEventListener('resize', () => { this.resize(); this.checkOrientation(); });
-    addEventListener('orientationchange', () => setTimeout(() => this.resize(), 300));
+    addEventListener('orientationchange', () => setTimeout(() => { this.resize(); this.checkOrientation(); }, 300));
+    try { matchMedia('(orientation: portrait)').addEventListener('change', () => setTimeout(() => this.checkOrientation(), 100)); } catch (e) { /* 古いブラウザ */ }
+    document.getElementById('btnRotateSkip').addEventListener('click', () => { this.rotateSkipped = true; this.checkOrientation(); });
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === this.canvas;
       this.input.locked = locked;
@@ -174,16 +176,21 @@ class Game {
     document.querySelectorAll('#sQuality button').forEach((b) => b.addEventListener('click', () => {
       this.settings.quality = b.dataset.q; this.saveSettings(); this.applyQuality(); this.refreshSettings(); this.audio.play('ui');
     }));
+    document.querySelectorAll('#sAds button').forEach((b) => b.addEventListener('click', () => {
+      this.settings.adsMode = b.dataset.m; this.input.adsToggle = false; this.saveSettings(); this.refreshSettings(); this.audio.play('ui');
+    }));
     this.refreshSettings();
     // 操作説明
-    const pc = [['WASD', '移動'], ['マウス', '視点'], ['左クリック', '射撃'], ['右クリック', 'エイム'], ['SPACE', 'ジャンプ / 二段'], ['SHIFT', 'ダッシュ'], ['C', 'スライディング'], ['E', 'グラップルフック'], ['F', 'ショックウェーブ'], ['Q', 'ECHO 発動'], ['R', 'リロード'], ['1-5 / ホイール', '武器切替']];
+    const pc = [['WASD', '移動'], ['マウス', '視点'], ['左クリック', '射撃'], ['右クリック / V', 'エイム（ADS）'], ['SPACE', 'ジャンプ / 二段'], ['SHIFT', 'ダッシュ'], ['C', 'スライディング'], ['E', 'グラップルフック'], ['F', 'ショックウェーブ'], ['Q', 'ECHO 発動'], ['R', 'リロード'], ['1-5 / ホイール', '武器切替']];
     const tc = [['左スティック', '移動'], ['右側ドラッグ', '視点'], ['FIRE', '押したまま狙える'], ['ADS', 'エイム切替'], ['JUMP', 'ジャンプ / 二段'], ['DASH', 'ダッシュ'], ['SLIDE', 'スライディング'], ['HOOK', 'グラップル'], ['SHOCK', '衝撃波'], ['ECHO', 'エコー発動'], ['⇄', '武器切替']];
     $('controlsList').innerHTML = (this.isTouch ? tc : pc).map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join('');
     this.checkOrientation();
   }
 
   checkOrientation() {
-    document.body.classList.toggle('portrait', this.isTouch && innerHeight > innerWidth);
+    const portrait = matchMedia('(orientation: portrait)').matches || innerHeight > innerWidth * 1.05;
+    document.body.classList.toggle('portrait', this.isTouch && portrait && !this.rotateSkipped);
+    document.body.classList.toggle('is-portrait', this.isTouch && portrait);
   }
 
   refreshHome() {
@@ -195,6 +202,7 @@ class Game {
 
   refreshSettings() {
     document.querySelectorAll('#sQuality button').forEach((b) => b.classList.toggle('on', b.dataset.q === this.settings.quality));
+    document.querySelectorAll('#sAds button').forEach((b) => b.classList.toggle('on', b.dataset.m === this.settings.adsMode));
   }
 
   openSettings() { this.ui.showScreen('settings'); }

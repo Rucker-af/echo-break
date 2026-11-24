@@ -189,7 +189,7 @@ export class UI {
     w.root.visible = !scoped;
     const spread = 4 + w.spreadNow * 700;
     this.crosshair.style.setProperty('--s', spread.toFixed(1) + 'px');
-    this.crosshair.style.opacity = scoped ? 0 : (1 - w.adsT * 0.6).toFixed(2);
+    this.crosshair.style.opacity = scoped ? 0 : Math.max(0, 1 - w.adsT * 1.4).toFixed(2);
     this.crosshair.style.setProperty('--c', hex(def.color));
     // 上部バー
     if (g.mode === 'wave') {

@@ -300,7 +300,8 @@ export class Player {
     cam.rotation.set(this.pitch + this.recoil, this.yaw, this.roll);
     this.fovKick = damp(this.fovKick, 0, 5, dt);
     const hs = Math.hypot(b.vel.x, b.vel.z);
-    const base = g.settings.fov;
+    let base = g.settings.fov;
+    if (cam.aspect < 1) base = Math.min(100, base + (1 - cam.aspect) * 45); // 縦長画面では視野を広げる
     const speedF = clamp((hs - SPEED) * 0.6, 0, 12);
     const w = g.weapons;
     const target = THREE.MathUtils.lerp(base + speedF + this.fovKick, w.def.adsFov * (base / 75), w.adsT);

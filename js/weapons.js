@@ -11,8 +11,8 @@ export const WEAPONS = [
     spread: 0.02, adsSpread: 0, recoil: 0.06, range: 300, color: 0xff3ad8, adsFov: 30, sound: 'rail', shake: 0.3 },
   { id: 'nova', name: 'NOVA ランチャー', short: 'NOVA', type: 'projectile', auto: false, rpm: 75, dmg: 105, radius: 5.5, speed: 48, mag: 4, reload: 2.0,
     spread: 0.005, adsSpread: 0, recoil: 0.045, range: 200, color: 0xb6ff3a, adsFov: 64, sound: 'launcher', shake: 0.2 },
-  { id: 'arc', name: 'CHAIN アーク', short: 'ARC', type: 'arc', auto: true, rpm: 760, dmg: 8.5, mag: 70, reload: 1.8,
-    spread: 0, adsSpread: 0, recoil: 0.002, range: 30, cone: 0.16, chains: 2, chainRange: 9, color: 0x8c7bff, adsFov: 68, sound: 'arc', shake: 0.02 },
+  { id: 'arc', name: 'CHAIN アーク', short: 'ARC', type: 'arc', auto: true, rpm: 600, dmg: 6.5, mag: 45, reload: 2.1,
+    spread: 0, adsSpread: 0, recoil: 0.002, range: 22, cone: 0.1, chains: 1, chainRange: 7, color: 0x8c7bff, adsFov: 68, sound: 'arc', shake: 0.02 },
 ];
 
 let flashTex = null;
@@ -107,13 +107,23 @@ function buildModel(def) {
       break;
     }
   }
+  // ホロサイト（構えたときにのぞく光る輪）。銃本体は画面中央より下に収まる
+  const top = { rifle: 0.12, shotgun: 0.06, rail: 0.115, nova: 0.125, arc: 0.06 }[def.id];
+  const sightY = top + 0.065;
+  for (const sx of [-1, 1]) box(0.005, sightY - top, 0.012, dark, sx * 0.031, (top + sightY) / 2 - 0.004, -0.12);
+  box(0.07, 0.006, 0.02, dark, 0, top + 0.003, -0.12);
+  const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(def.color).multiplyScalar(1.3), transparent: true, opacity: 0.75 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.0022, 6, 40), ringMat);
+  ring.position.set(0, sightY, -0.12); g.add(ring);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.0016, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.25, 0.3).multiplyScalar(4) }));
+  dot.position.set(0, sightY, -0.12); g.add(dot);
   g.add(muzzle);
   const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: getFlashTex(), color: new THREE.Color(def.color).multiplyScalar(2.5), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
   flash.scale.setScalar(0.25); flash.visible = false;
   muzzle.add(flash);
   g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.renderOrder = 10; } });
   g.visible = false;
-  return { group: g, muzzle, flash, spin };
+  return { group: g, muzzle, flash, spin, sightY };
 }
 
 const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _m = new THREE.Vector3(), _p = new THREE.Vector3();
@@ -126,7 +136,7 @@ export class WeaponSystem {
     game.camera.add(this.root);
     this.models = WEAPONS.map((d) => { const m = buildModel(d); this.root.add(m.group); return m; });
     this.hip = new THREE.Vector3(0.2, -0.2, -0.36);
-    this.adsPos = new THREE.Vector3(0, -0.098, -0.3);
+    this.adsPos = new THREE.Vector3(0, -0.165, -0.3);
     this.reset();
   }
 
@@ -236,6 +246,8 @@ export class WeaponSystem {
     const bx = Math.sin(this.bobPhase) * 0.014 * bobA;
     const by = -Math.abs(Math.cos(this.bobPhase)) * 0.016 * bobA;
     this.kick = damp(this.kick, 0, 11, dt);
+    this.adsPos.y = -this.models[this.cur].sightY;
+    this.hip.x = this.game.camera.aspect < 1 ? 0.11 : 0.2;
     const p = _p.copy(this.hip).lerp(this.adsPos, this.adsT);
     const idle = Math.sin(this.game.time * 1.7) * 0.003 * (1 - this.adsT);
     p.x += this.swayX * (1 - this.adsT * 0.7) + bx;
