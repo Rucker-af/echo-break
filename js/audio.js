@@ -12,6 +12,7 @@ export class AudioFX {
     const comp = this.ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
     this.master.connect(comp); comp.connect(this.ctx.destination);
+    this.out = comp; // 録画用に音を分けて取り出せるようにする
     const len = this.ctx.sampleRate;
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = buf.getChannelData(0);
