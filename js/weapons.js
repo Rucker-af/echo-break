@@ -33,7 +33,7 @@ function getFlashTex() {
 function buildModel(def) {
   const metal = new THREE.MeshStandardMaterial({ color: 0x3c424f, metalness: 0.85, roughness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x15171d, metalness: 0.6, roughness: 0.5 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: def.color, emissiveIntensity: 3.2 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: def.color, emissiveIntensity: 1.1 });
   const g = new THREE.Group();
   const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); return o; };
   const cyl = (r, len, m, x, y, z, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m); o.rotation.x = Math.PI / 2; o.position.set(x, y, z); g.add(o); return o; };

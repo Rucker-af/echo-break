@@ -42,7 +42,7 @@ class Game {
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 0.88;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -127,7 +127,7 @@ class Game {
       this.composer.addPass(this.ao);
     } else this.ao = null;
     const bres = high ? new THREE.Vector2(innerWidth, innerHeight) : new THREE.Vector2(innerWidth / 2, innerHeight / 2);
-    this.bloom = new UnrealBloomPass(bres, 0.7, 0.45, 0.9);
+    this.bloom = new UnrealBloomPass(bres, 0.32, 0.3, 1.05);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.resize();

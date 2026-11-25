@@ -441,7 +441,7 @@ export class EnemyManager {
     if (this.typeMats[type]) return this.typeMats[type];
     const T = TYPES[type];
     return (this.typeMats[type] = {
-      armor: new THREE.MeshStandardMaterial({ color: T.armor, metalness: 0.75, roughness: 0.32, emissive: 0x000000 }),
+      armor: new THREE.MeshStandardMaterial({ color: T.armor, metalness: 0.55, roughness: 0.55, emissive: 0x000000 }),
       dark: new THREE.MeshStandardMaterial({ color: 0x17191f, metalness: 0.6, roughness: 0.45 }),
       glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(T.glow).multiplyScalar(3) }),
     });

@@ -44,11 +44,11 @@ export class Avatars {
         transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending,
       });
     } else if (name === 'Main') {
-      m = new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.5), metalness: 0.45, roughness: 0.45 });
+      m = new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.5), metalness: 0.3, roughness: 0.6 });
     } else if (name === 'Black') {
-      m = new THREE.MeshStandardMaterial({ color: 0x050507, emissive: col, emissiveIntensity: 1.6, metalness: 0.2, roughness: 0.3 });
+      m = new THREE.MeshStandardMaterial({ color: 0x050507, emissive: col, emissiveIntensity: 0.9, metalness: 0.2, roughness: 0.5 });
     } else {
-      m = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, metalness: 0.85, roughness: 0.32 });
+      m = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, metalness: 0.6, roughness: 0.55 });
     }
     const d = this.game.world.detail;
     if (d && !holo && name !== 'Black') { m.roughnessMap = d.arm; m.normalMap = d.normal; m.normalScale.set(0.4, 0.4); }

@@ -196,16 +196,16 @@ export class World {
       if (extra.keep && n && a) this.detail = { normal: n, arm: a };
     };
     const jobs = [
-      apply(this.matFloor, 'hangar_concrete_floor', 52, 0x9aa0b4, { emissive: 0.22, normal: 1.2, metal: 0.6, rough: 0.9, metalFallback: 0.05, roughFallback: 0.85, tintLow: 0x6a7080 }),
-      apply(this.matWall, 'metal_plate_02', 2, 0xb4bccd, { emissive: 0.45, metalFallback: 0.5, roughFallback: 0.45, keep: true }),
-      apply(this.matDark, 'metal_plate', 2, 0x6c7385, { metalFallback: 0.7, roughFallback: 0.35 }),
-      apply(this.matCrate, 'container_side', 1.5, 0xc4beb2, { emissive: 0.35, metalFallback: 0.4, roughFallback: 0.5 }),
+      apply(this.matFloor, 'hangar_concrete_floor', 52, 0x9aa0b4, { emissive: 0.08, normal: 1.2, metal: 0.3, rough: 0.9, metalFallback: 0.05, roughFallback: 0.85, tintLow: 0x6a7080 }),
+      apply(this.matWall, 'metal_plate_02', 2, 0xb4bccd, { emissive: 0.22, metalFallback: 0.4, roughFallback: 0.6, keep: true }),
+      apply(this.matDark, 'metal_plate', 2, 0x6c7385, { metalFallback: 0.55, roughFallback: 0.55 }),
+      apply(this.matCrate, 'container_side', 1.5, 0xc4beb2, { emissive: 0.15, metalFallback: 0.3, roughFallback: 0.65 }),
     ];
     if (full) {
       jobs.push(new Promise((res) => new RGBELoader().load('assets/hdri/rooftop_night_1k.hdr', (hdr) => {
         hdr.mapping = THREE.EquirectangularReflectionMapping;
         this.scene.environment = this.pmrem.fromEquirectangular(hdr).texture;
-        this.scene.environmentIntensity = 0.9;
+        this.scene.environmentIntensity = 0.55;
         hdr.dispose();
         res();
       }, undefined, () => res())));
@@ -216,13 +216,13 @@ export class World {
   buildMaterials() {
     const p = panelTextures();
     const f = floorTextures();
-    this.matWall = new THREE.MeshStandardMaterial({ map: p.map, emissiveMap: p.em, emissive: 0xffffff, emissiveIntensity: 0.7, color: 0x9ca6bd, metalness: 0.55, roughness: 0.42 });
-    this.matDark = new THREE.MeshStandardMaterial({ map: p.map, color: 0x4a5062, metalness: 0.75, roughness: 0.3 });
-    this.matCrate = new THREE.MeshStandardMaterial({ map: p.map, emissiveMap: p.em, emissive: 0xffffff, emissiveIntensity: 0.8, color: 0xc77a3a, metalness: 0.4, roughness: 0.5 });
+    this.matWall = new THREE.MeshStandardMaterial({ map: p.map, emissiveMap: p.em, emissive: 0xffffff, emissiveIntensity: 0.35, color: 0x9ca6bd, metalness: 0.4, roughness: 0.6 });
+    this.matDark = new THREE.MeshStandardMaterial({ map: p.map, color: 0x4a5062, metalness: 0.55, roughness: 0.55 });
+    this.matCrate = new THREE.MeshStandardMaterial({ map: p.map, emissiveMap: p.em, emissive: 0xffffff, emissiveIntensity: 0.35, color: 0xc77a3a, metalness: 0.3, roughness: 0.65 });
     f.map.repeat.set(19.75, 19.75); f.em.repeat.set(19.75, 19.75);
-    this.matFloor = new THREE.MeshStandardMaterial({ map: f.map, emissiveMap: f.em, emissive: 0xffffff, emissiveIntensity: 0.32, metalness: 0.6, roughness: 0.34 });
+    this.matFloor = new THREE.MeshStandardMaterial({ map: f.map, emissiveMap: f.em, emissive: 0xffffff, emissiveIntensity: 0.12, metalness: 0.3, roughness: 0.7 });
     this.trimMats = {};
-    for (const k in NEON) this.trimMats[k] = new THREE.MeshBasicMaterial({ color: new THREE.Color(NEON[k]).multiplyScalar(2.6) });
+    for (const k in NEON) this.trimMats[k] = new THREE.MeshBasicMaterial({ color: new THREE.Color(NEON[k]).multiplyScalar(1.15) });
   }
 
   buildLights(renderer) {
@@ -241,11 +241,11 @@ export class World {
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     this.scene.add(sun); this.scene.add(sun.target);
     this.sun = sun;
-    const rim = new THREE.DirectionalLight(0xff4fd8, 0.6);
+    const rim = new THREE.DirectionalLight(0xff4fd8, 0.35);
     rim.position.set(-40, 20, -30);
     this.scene.add(rim);
-    const l1 = new THREE.PointLight(0xff2bd6, 22, 30, 1.6); l1.position.set(0, 9, 0); this.scene.add(l1);
-    const l2 = new THREE.PointLight(0x2fe6ff, 10, 30, 1.6); l2.position.set(0, 6, 30); this.scene.add(l2);
+    const l1 = new THREE.PointLight(0xff2bd6, 11, 30, 1.6); l1.position.set(0, 9, 0); this.scene.add(l1);
+    const l2 = new THREE.PointLight(0x2fe6ff, 5, 30, 1.6); l2.position.set(0, 6, 30); this.scene.add(l2);
     this.coreLight = l1;
   }
 
@@ -446,7 +446,7 @@ export class World {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.addPad(sx * 19, sz * 25.5, sx, 0, 8, 19);
 
     // タワー上のコア（演出）
-    const coreMat = new THREE.MeshStandardMaterial({ color: 0x220018, emissive: NEON.magenta, emissiveIntensity: 2.5, metalness: 0.2, roughness: 0.2 });
+    const coreMat = new THREE.MeshStandardMaterial({ color: 0x220018, emissive: NEON.magenta, emissiveIntensity: 1.4, metalness: 0.2, roughness: 0.2 });
     const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.1, 0), coreMat);
     core.position.set(0, 10, 0);
     this.group.add(core);
@@ -565,7 +565,7 @@ export class World {
 
   buildSkyline() {
     const tex = windowTexture();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x0b0c14, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.4, metalness: 0.5, roughness: 0.6 });
+    const mat = new THREE.MeshStandardMaterial({ color: 0x0b0c14, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.8, metalness: 0.5, roughness: 0.6 });
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
     const N = 170;
     const inst = new THREE.InstancedMesh(geo, mat, N);
@@ -602,7 +602,7 @@ export class World {
       p.beam.material.opacity = 0.12 + Math.sin(t * 4) * 0.05;
       p.arrow.position.y = 0.4 + ((t * 1.5) % 1) * 1.6;
     }
-    this.coreLight.intensity = 20 + Math.sin(t * 2.6) * 6;
+    this.coreLight.intensity = 10 + Math.sin(t * 2.6) * 2.5;
   }
 
   // ---- 当たり判定 ----
