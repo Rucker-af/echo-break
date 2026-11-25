@@ -11,6 +11,7 @@ export class Combat {
     this.rockets = [];
     this.orbs = [];
     this.shields = [];
+    this.powerups = [];
     this.rocketGeo = new THREE.SphereGeometry(0.16, 12, 8);
     this.rocketMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb6ff3a).multiplyScalar(4) });
     this.orbGeo = new THREE.OctahedronGeometry(0.26, 1);
@@ -21,7 +22,8 @@ export class Combat {
     for (const r of this.rockets) this.game.scene.remove(r.mesh);
     for (const o of this.orbs) this.game.scene.remove(o.mesh);
     for (const sh of this.shields) this.game.scene.remove(sh.mesh);
-    this.rockets = []; this.orbs = []; this.shields = [];
+    for (const pu of this.powerups) this.game.scene.remove(pu.mesh);
+    this.rockets = []; this.orbs = []; this.shields = []; this.powerups = [];
   }
 
   spreadDir(dir, s, out) {
@@ -45,7 +47,9 @@ export class Combat {
     const g = this.game, fx = g.effects;
     const spread = opts.spread ?? def.spread;
     const agg = new Map();
-    const hitE = (e, dmg, part, point, dv) => {
+    const mul = owner === 'player' ? g.player.dmgMul() : 1;
+    const hitE = (e, dmg0, part, point, dv) => {
+      const dmg = dmg0 * mul;
       const killed = e.damage(dmg, part, dv, owner);
       const a = agg.get(e) || { dmg: 0, head: false, point, killed: false };
       a.dmg += dmg; a.head = a.head || part === 'head'; a.killed = a.killed || killed; a.point = point;
@@ -163,7 +167,7 @@ export class Combat {
       if (dist >= reach) continue;
       const f = 1 - dist / reach;
       const dv = _v.subVectors(_c, pos).normalize().clone();
-      const dm = dmg * (0.3 + 0.7 * f);
+      const dm = dmg * (0.3 + 0.7 * f) * (owner === 'player' ? g.player.dmgMul() : 1);
       const killed = e.damage(dm, 'body', dv, owner);
       e.knock(dv, 14 * f);
       agg.set(e, { dmg: dm, point: _c.clone(), killed });
@@ -265,6 +269,59 @@ export class Combat {
     return false;
   }
 
+  // ---- パワーアップ ----
+  spawnPowerup() {
+    const g = this.game;
+    const spots = [[0, 5.01, 0], [-30, 4.01, -30], [30, 4.01, 30], [30, 4.01, -30], [-30, 4.01, 30], [0, 0, 20], [0, 0, -20],
+      [-24, 0, 12], [24, 0, -12], [0, 3.01, 64], [61, 9.01, 10], [-54, 5.61, 0], [-12, 5.41, -60], [46, 8.11, -58], [56, 3.01, -36]];
+    const free = spots.filter(([x, , z]) => !this.powerups.some((p) => Math.hypot(p.pos.x - x, p.pos.z - z) < 3));
+    const [x, y, z] = free[Math.floor(Math.random() * free.length)];
+    const kinds = [
+      { id: 'dmg', name: 'ダメージ UP', color: 0xff3d5a },
+      { id: 'haste', name: 'ヘイスト', color: 0x3aff9a },
+      { id: 'charge', name: 'オーバーチャージ', color: 0xffd23a },
+    ];
+    const k = kinds[Math.floor(Math.random() * kinds.length)];
+    const grp = new THREE.Group();
+    const col = new THREE.Color(k.color);
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45, 0), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(2.2) }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.04, 8, 40), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(2.5) }));
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 7, 16, 1, true), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(1.2), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    beam.position.y = 3.2;
+    grp.add(core, ring, beam);
+    grp.position.set(x, y + 1.1, z);
+    g.scene.add(grp);
+    this.powerups.push({ kind: k, pos: new THREE.Vector3(x, y, z), mesh: grp, core, ring, t: 0, life: 40 });
+    g.ui.toast(`パワーアップ出現：${k.name}`);
+    g.effects.burst(grp.position, k.color, 30, 5, 0.15, 0.6);
+  }
+
+  updatePowerups(dt) {
+    const g = this.game, p = g.player;
+    for (let i = this.powerups.length - 1; i >= 0; i--) {
+      const pu = this.powerups[i];
+      pu.t += dt; pu.life -= dt;
+      pu.core.rotation.set(pu.t * 1.3, pu.t * 2, 0);
+      pu.ring.rotation.set(Math.PI / 2 + Math.sin(pu.t) * 0.3, pu.t, 0);
+      pu.mesh.position.y = pu.pos.y + 1.1 + Math.sin(pu.t * 2.5) * 0.18;
+      const d = Math.hypot(p.pos.x - pu.pos.x, p.pos.z - pu.pos.z);
+      if (p.alive && d < 1.7 && Math.abs(p.pos.y - pu.pos.y) < 2.2) {
+        const k = pu.kind;
+        if (k.id === 'dmg') p.buffs.dmg = 12;
+        else if (k.id === 'haste') p.buffs.haste = 12;
+        else { p.echoMeter = Math.min(100, p.echoMeter + 50); p.ultMeter = Math.min(100, p.ultMeter + 50); }
+        g.audio.play('pickup'); g.audio.play('ok');
+        g.effects.burst(pu.mesh.position, k.color, 50, 7, 0.16, 0.6);
+        g.ui.announce(k.name, '#' + k.color.toString(16).padStart(6, '0'));
+        g.ui.flash(`rgba(${(k.color >> 16) & 255},${(k.color >> 8) & 255},${k.color & 255},0.25)`);
+        g.scene.remove(pu.mesh); this.powerups.splice(i, 1);
+        g.emit('powerup', { id: k.id });
+        continue;
+      }
+      if (pu.life <= 0) { g.scene.remove(pu.mesh); this.powerups.splice(i, 1); }
+    }
+  }
+
   spawnOrb(pos) {
     const mesh = new THREE.Mesh(this.orbGeo, this.orbMat);
     mesh.position.copy(pos);
@@ -274,6 +331,7 @@ export class Combat {
 
   update(dt) {
     const g = this.game, fx = g.effects;
+    this.updatePowerups(dt);
     for (let i = this.shields.length - 1; i >= 0; i--) {
       const sh = this.shields[i];
       sh.t -= dt; sh.hit = Math.max(0, (sh.hit || 0) - dt);

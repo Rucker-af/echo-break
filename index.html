@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=11">
+<link rel="stylesheet" href="css/style.css?v=18">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -41,7 +41,11 @@
   <div id="centerMsg"><div class="cm-title"></div><div class="cm-sub"></div></div>
   <div id="echoBannerEl"><span>ECHO</span><small>PAST SELF DEPLOYED</small></div>
   <div id="toastBox"></div>
+  <div id="announceBox"></div>
+  <div id="bossBar" class="hidden"><div class="bb-name">WARDEN</div><div class="bb-track"><i id="bossFill"></i></div></div>
+  <div id="buffs"></div>
   <div id="scorePops"></div>
+  <canvas id="radar" width="160" height="160"></canvas>
   <div id="rec"><i></i><span>ECHO REC</span><b id="recTime">0.0s</b></div>
   <div id="healthBox">
     <div class="hp-top"><span class="hp-label">HP</span><span class="hp-num" id="hpNum">100</span></div>
@@ -71,6 +75,17 @@
 </div>
 
 <!-- ===== スマホ操作 ===== -->
+<div id="touchEditBar" class="hidden">
+  <div class="te-title">ボタン配置の編集 <small>ドラッグで移動・選んだボタンの大きさを変更</small></div>
+  <div class="te-row">
+    <span id="teSel">ボタンを選択</span>
+    <input type="range" id="teSize" min="0.6" max="1.6" step="0.05" value="1">
+    <button id="teMirror">左右反転</button>
+    <button id="teReset">リセット</button>
+    <button id="teCancel">やめる</button>
+    <button id="teSave" class="pri">保存</button>
+  </div>
+</div>
 <div id="touch" class="hidden">
   <div id="joyBase"><div id="joyKnob"></div></div>
   <div id="joyHint"><span>MOVE</span></div>
@@ -97,39 +112,66 @@
 </div>
 
 <div id="home" class="screen">
-  <div class="home-wrap">
-    <div class="home-main">
-      <div class="kicker">FIRST-PERSON ARENA SHOOTER</div>
-      <div class="logo big">ECHO<em>//</em>BREAK</div>
-      <div class="tagline">過去の自分と、共に撃て。</div>
-      <div class="menu">
-        <button class="mbtn primary" id="btnBattle"><span class="mb-t">NPC戦</span><span class="mb-s">WAVE SURVIVAL — 押し寄せる機械兵を殲滅せよ</span></button>
-        <div class="diff" id="diffSel"><span>難易度</span><button data-d="0">EASY</button><button data-d="1">NORMAL</button><button data-d="2">HARD</button></div>
-        <button class="mbtn" id="btnTutorial"><span class="mb-t">チュートリアル <i class="badge">おすすめ</i></span><span class="mb-s">移動・武器・スキル・ECHOシステムを学ぶ</span></button>
-        <button class="mbtn locked" disabled><span class="mb-t">対人戦 <i class="soon">COMING SOON</i></span><span class="mb-s">オンライン対戦は今後のアップデートで追加予定</span></button>
-        <button class="mbtn" id="btnSettings"><span class="mb-t">設定</span><span class="mb-s">感度・視野角・画質・音量</span></button>
+  <div class="lobby">
+    <header class="lb-top">
+      <div class="logo sm">ECHO<em>//</em>BREAK</div>
+      <div class="lb-profile">
+        <div class="lb-lv"><small>LV</small><b id="lbLevel">1</b></div>
+        <div class="lb-pinfo">
+          <div class="lb-name"><span id="lbName">AGENT</span><i id="lbTitle">ルーキー</i></div>
+          <div class="lb-xp"><i id="lbXp"></i></div>
+          <small id="lbXpText">0 / 500 XP</small>
+        </div>
       </div>
+      <button class="lb-gear" id="btnSettings" aria-label="設定">⚙<span>設定</span></button>
+    </header>
+
+    <nav class="lb-nav" id="lbNav">
+      <button data-tab="play" class="on">プレイ</button>
+      <button data-tab="missions">ミッション<i class="dot" id="lbMissionDot"></i></button>
+      <button data-tab="stats">戦績</button>
+      <button data-tab="howto">遊び方</button>
+    </nav>
+
+    <section class="lb-panel on" data-panel="play">
+      <h3 class="lb-h">MODE SELECT</h3>
+      <div class="modes" id="modeList">
+        <button class="mode-card" data-mode="wave"><b>SURVIVAL</b><span>ウェーブ・サバイバル</span><small>押し寄せる機械兵を殲滅。5ウェーブごとにボスが現れる</small></button>
+        <button class="mode-card" data-mode="bossrush"><b>BOSS RUSH</b><span>ボスラッシュ</span><small>毎ウェーブがボス戦。腕に覚えのある人向け</small><i class="new">NEW</i></button>
+        <button class="mode-card" data-mode="tutorial" id="btnTutorial"><b>TRAINING</b><span>チュートリアル</span><small>移動・武器・スキル・ECHOを学ぶ</small><i class="badge">おすすめ</i></button>
+        <button class="mode-card locked" disabled><b>PvP</b><span>対人戦</span><small>オンライン対戦は今後のアップデートで追加予定</small><i class="soon">SOON</i></button>
+      </div>
+      <div class="diff" id="diffSel"><span>難易度</span><button data-d="0">EASY</button><button data-d="1">NORMAL</button><button data-d="2">HARD</button></div>
+    </section>
+
+    <section class="lb-panel" data-panel="missions">
+      <h3 class="lb-h">MISSIONS <small>達成すると経験値。達成したものは次の試合後に入れ替わる</small></h3>
+      <div class="missions" id="missionList"></div>
+    </section>
+
+    <section class="lb-panel" data-panel="stats">
+      <h3 class="lb-h">CAREER</h3>
+      <div class="stat-grid" id="statGrid"></div>
       <div class="records">BEST SCORE <b id="bestScore">0</b><span class="sep">|</span>BEST WAVE <b id="bestWave">0</b></div>
-    </div>
-    <div class="home-side">
+    </section>
+
+    <section class="lb-panel" data-panel="howto">
       <div class="card echo-card">
         <h3><i></i>ECHO SYSTEM</h3>
-        <p>あなたの直近<b>5秒</b>の動きと射撃は、常に記録されている。<b>ECHO</b> を解き放つと、過去のあなたがホログラムとして蘇り、同じ軌跡で戦う。敵はエコーに引きつけられ、再生が終わると<b>爆散</b>する。</p>
-      </div>
-      <div class="card">
-        <h3>ARSENAL</h3>
-        <ul class="arsenal">
-          <li style="--c:#3ee8ff"><b>VX-9</b> パルスライフル<small>連射・万能</small></li>
-          <li style="--c:#ff8a2a"><b>HX</b> スキャッター<small>近距離・空中で反動移動</small></li>
-          <li style="--c:#ff3ad8"><b>LANCE</b> レールガン<small>貫通・スコープ</small></li>
-          <li style="--c:#b6ff3a"><b>NOVA</b> ランチャー<small>爆発・ロケットジャンプ</small></li>
-          <li style="--c:#8c7bff"><b>CHAIN</b> アーク<small>自動追尾・連鎖電撃</small></li>
-        </ul>
+        <p>直近<b>5秒</b>の動きと射撃は常に記録されている。<b>ECHO</b> を解き放つと、過去のあなたがホログラムとして蘇り同じ軌跡で戦う。敵を引きつけ、最後に<b>爆散</b>する。</p>
       </div>
       <div class="card"><h3>CONTROLS</h3><div class="controls" id="controlsList"></div></div>
+    </section>
+
+    <div class="lb-char" id="lbChar">
+      <div class="lbc-role" id="lbcRole">突撃</div>
+      <div class="lbc-name" id="lbcName">VECTOR</div>
+      <button class="mbtn small" id="btnChar">キャラクター変更</button>
     </div>
+
+    <button class="lb-play" id="btnBattle"><span>PLAY</span><small id="lbModeLabel">SURVIVAL ・ NORMAL</small></button>
   </div>
-  <div class="version">v0.1 PROTOTYPE</div>
+  <div class="version">v0.2 ALPHA</div>
 </div>
 
 <div id="charSelect" class="screen">
@@ -137,7 +179,7 @@
     <div class="cs-head"><div class="kicker">SELECT YOUR AVATAR</div><h2>キャラクター選択</h2></div>
     <div class="cs-list" id="csList"></div>
     <div class="cs-detail" id="csDetail"></div>
-    <div class="cs-btns"><button class="mbtn small" id="btnCsBack">もどる</button><button class="mbtn primary small" id="btnDeploy">出撃</button></div>
+    <div class="cs-btns"><button class="mbtn small" id="btnCsBack">もどる</button><button class="mbtn primary small" id="btnDeploy">決定</button></div>
   </div>
 </div>
 
@@ -149,7 +191,19 @@
     <label>音量 <b id="vVol">70</b><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
     <div class="row">エイム（ADS）<span class="seg" id="sAds"><button data-m="hold">長押し</button><button data-m="toggle">切り替え</button></span></div>
     <div class="row">画質<span class="seg" id="sQuality"><button data-q="low">軽量</button><button data-q="high">高画質</button></span></div>
+    <div class="row" id="rowKeys">キー設定（PC）<button class="seg-btn" id="btnKeys">変更する</button></div>
+    <div class="row" id="rowTouch">ボタン配置（スマホ）<button class="seg-btn" id="btnTouchEdit">編集する</button></div>
+    <label class="nameRow">プレイヤー名<input type="text" id="sName" maxlength="12" placeholder="AGENT"></label>
     <button class="mbtn small" id="btnSettingsBack">もどる</button>
+  </div>
+</div>
+
+<div id="keysScreen" class="screen modal">
+  <div class="panel wide">
+    <h2>キー設定</h2>
+    <p class="p small">変えたい操作を押してから、新しいキーを押してください（ESCでやめる）。使用中のキーは入れ替わります。</p>
+    <div class="keylist" id="keyList"></div>
+    <div class="row-btns"><button class="mbtn small" id="btnKeysReset">初期設定にもどす</button><button class="mbtn primary small" id="btnKeysBack">もどる</button></div>
   </div>
 </div>
 
@@ -158,7 +212,7 @@
     <h2>PAUSED</h2>
     <button class="mbtn primary small" id="btnResume">再開</button>
     <button class="mbtn small" id="btnPauseSettings">設定</button>
-    <button class="mbtn small" id="btnQuit">ホームへ戻る</button>
+    <button class="mbtn small" id="btnQuit">ロビーへ戻る</button>
   </div>
 </div>
 
@@ -175,7 +229,12 @@
       <div><span>ECHO KILLS</span><b id="rEcho">0</b></div>
     </div>
     <div class="newrec hidden" id="rNew">NEW RECORD!</div>
-    <div class="row-btns"><button class="mbtn primary small" id="btnRetry">もう一度</button><button class="mbtn small" id="btnHome">ホームへ</button></div>
+    <div class="res-xp" id="rXp">
+      <div class="rx-head"><span>EXPERIENCE</span><b id="rXpGain">+0 XP</b></div>
+      <div class="rx-lv"><b id="rLv">LV 1</b><div class="lb-xp"><i id="rXpBar"></i></div><span id="rLvUp" class="hidden">LEVEL UP!</span></div>
+      <div class="rx-missions" id="rMissions"></div>
+    </div>
+    <div class="row-btns"><button class="mbtn primary small" id="btnRetry">もう一度</button><button class="mbtn small" id="btnHome">ロビーへ</button></div>
   </div>
 </div>
 
@@ -183,7 +242,7 @@
   <div class="panel">
     <h2>TRAINING COMPLETE</h2>
     <p class="p">すべての訓練を完了した。<br>次は本番――NPC戦で腕を試そう。</p>
-    <div class="row-btns"><button class="mbtn primary small" id="btnTutToBattle">NPC戦へ</button><button class="mbtn small" id="btnTutHome">ホームへ</button></div>
+    <div class="row-btns"><button class="mbtn primary small" id="btnTutToBattle">NPC戦へ</button><button class="mbtn small" id="btnTutHome">ロビーへ</button></div>
   </div>
 </div>
 

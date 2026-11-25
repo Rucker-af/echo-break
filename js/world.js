@@ -196,7 +196,7 @@ export class World {
       if (extra.keep && n && a) this.detail = { normal: n, arm: a };
     };
     const jobs = [
-      apply(this.matFloor, 'hangar_concrete_floor', 30, 0x9aa0b4, { emissive: 0.22, normal: 1.2, metal: 0.6, rough: 0.9, metalFallback: 0.05, roughFallback: 0.85, tintLow: 0x6a7080 }),
+      apply(this.matFloor, 'hangar_concrete_floor', 52, 0x9aa0b4, { emissive: 0.22, normal: 1.2, metal: 0.6, rough: 0.9, metalFallback: 0.05, roughFallback: 0.85, tintLow: 0x6a7080 }),
       apply(this.matWall, 'metal_plate_02', 2, 0xb4bccd, { emissive: 0.45, metalFallback: 0.5, roughFallback: 0.45, keep: true }),
       apply(this.matDark, 'metal_plate', 2, 0x6c7385, { metalFallback: 0.7, roughFallback: 0.35 }),
       apply(this.matCrate, 'container_side', 1.5, 0xc4beb2, { emissive: 0.35, metalFallback: 0.4, roughFallback: 0.5 }),
@@ -219,7 +219,7 @@ export class World {
     this.matWall = new THREE.MeshStandardMaterial({ map: p.map, emissiveMap: p.em, emissive: 0xffffff, emissiveIntensity: 0.7, color: 0x9ca6bd, metalness: 0.55, roughness: 0.42 });
     this.matDark = new THREE.MeshStandardMaterial({ map: p.map, color: 0x4a5062, metalness: 0.75, roughness: 0.3 });
     this.matCrate = new THREE.MeshStandardMaterial({ map: p.map, emissiveMap: p.em, emissive: 0xffffff, emissiveIntensity: 0.8, color: 0xc77a3a, metalness: 0.4, roughness: 0.5 });
-    f.map.repeat.set(11.5, 11.5); f.em.repeat.set(11.5, 11.5);
+    f.map.repeat.set(19.75, 19.75); f.em.repeat.set(19.75, 19.75);
     this.matFloor = new THREE.MeshStandardMaterial({ map: f.map, emissiveMap: f.em, emissive: 0xffffff, emissiveIntensity: 0.32, metalness: 0.6, roughness: 0.34 });
     this.trimMats = {};
     for (const k in NEON) this.trimMats[k] = new THREE.MeshBasicMaterial({ color: new THREE.Color(NEON[k]).multiplyScalar(2.6) });
@@ -232,11 +232,12 @@ export class World {
     const hemi = new THREE.HemisphereLight(0x9fb4ff, 0x2a1438, 0.7);
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xffd9c2, 2.0);
-    sun.position.set(35, 60, 22);
+    sun.position.set(50, 85, 30);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const hq = this.game.settings.quality === 'high';
+    sun.shadow.mapSize.set(hq ? 4096 : 2048, hq ? 4096 : 2048);
     const sc = sun.shadow.camera;
-    sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 160;
+    sc.left = -86; sc.right = 86; sc.top = 86; sc.bottom = -86; sc.near = 1; sc.far = 200;
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     this.scene.add(sun); this.scene.add(sun.target);
     this.sun = sun;
@@ -352,28 +353,28 @@ export class World {
   }
 
   buildArena() {
-    const S = 46;
+    const S = this.S = 78;      // マップの半分の大きさ
+    const IN = 46;              // 中央エリアの半分の大きさ
+    this.floorSize = S * 2;
     // 床
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(S * 2, S * 2), this.matFloor);
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
     this.group.add(floor);
-    const outer = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x07060c, roughness: 0.9 }));
+    const outer = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: 0x07060c, roughness: 0.9 }));
     outer.rotation.x = -Math.PI / 2; outer.position.y = -0.05;
     this.group.add(outer);
 
     // 外周の壁
-    const WH = 16;
-    this.addBox(0, 0, -S - 1, S * 2 + 4, WH, 2, this.matWall, { trim: 'magenta', midTrim: 6 });
-    this.addBox(0, 0, S + 1, S * 2 + 4, WH, 2, this.matWall, { trim: 'magenta', midTrim: 6 });
-    this.addBox(-S - 1, 0, 0, 2, WH, S * 2, this.matWall, { trim: 'cyan', midTrim: 6 });
-    this.addBox(S + 1, 0, 0, 2, WH, S * 2, this.matWall, { trim: 'cyan', midTrim: 6 });
-    // 見えない高い壁（壁の上に出ないように）
-    this.addCollider(-S - 3, WH, -S - 3, S + 3, 90, -S);
-    this.addCollider(-S - 3, WH, S, S + 3, 90, S + 3);
-    this.addCollider(-S - 3, WH, -S, -S, 90, S);
-    this.addCollider(S, WH, -S, S + 3, 90, S);
-    // 壁の柱
-    for (let i = -36; i <= 36; i += 12) {
+    const WH = 18;
+    this.addBox(0, 0, -S - 1, S * 2 + 4, WH, 2, this.matWall, { trim: 'magenta', midTrim: 7 });
+    this.addBox(0, 0, S + 1, S * 2 + 4, WH, 2, this.matWall, { trim: 'magenta', midTrim: 7 });
+    this.addBox(-S - 1, 0, 0, 2, WH, S * 2, this.matWall, { trim: 'cyan', midTrim: 7 });
+    this.addBox(S + 1, 0, 0, 2, WH, S * 2, this.matWall, { trim: 'cyan', midTrim: 7 });
+    this.addCollider(-S - 3, WH, -S - 3, S + 3, 120, -S);
+    this.addCollider(-S - 3, WH, S, S + 3, 120, S + 3);
+    this.addCollider(-S - 3, WH, -S, -S, 120, S);
+    this.addCollider(S, WH, -S, S + 3, 120, S);
+    for (let i = -65; i <= 65; i += 13) {
       this.addBox(i, 0, -S + 0.4, 1.4, WH, 0.8, this.matDark, { collide: false });
       this.addBox(i, 0, S - 0.4, 1.4, WH, 0.8, this.matDark, { collide: false });
       this.addBox(-S + 0.4, 0, i, 0.8, WH, 1.4, this.matDark, { collide: false });
@@ -383,6 +384,19 @@ export class World {
       this.addVStrip(-S + 0.85, 0.5, WH - 0.5, i, 'magenta');
       this.addVStrip(S - 0.85, 0.5, WH - 0.5, i, 'magenta');
     }
+
+    // 中央エリアを囲む低い壁（真ん中と両わきに通り道）
+    const iw = 6;
+    for (const side of [-1, 1]) {
+      for (const [a, b] of [[-IN, -26], [-18, -9], [9, 18], [26, IN]]) {
+        const len = b - a, mid = (a + b) / 2;
+        this.addBox(mid, 0, side * (IN + 1), len, iw, 1.6, this.matWall, { trim: 'magenta' });
+        this.addBox(side * (IN + 1), 0, mid, 1.6, iw, len, this.matWall, { trim: 'cyan' });
+      }
+    }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.addBox(sx * (IN + 1), 0, sz * (IN + 1), 3, iw + 2, 3, this.matDark, { trim: 'amber' });
+
+    this.buildDistricts(S, IN);
 
     // 中央タワー
     this.addBox(0, 0, 0, 10, 5, 10, this.matWall, { trim: 'magenta', midTrim: 2.5 });
@@ -447,18 +461,87 @@ export class World {
     });
 
     // 看板
-    this.sign('ECHO//BREAK', 'SECTOR-07  ·  COMBAT SIMULATION', 0, 10.5, -S + 0.1, 0, 22, '#2fe6ff');
-    this.sign('WARNING', 'HOSTILE UNITS DETECTED', 0, 10.5, S - 0.1, Math.PI, 16, '#ff2bd6');
-    this.sign('ARENA 07', 'REWIND · REPLAY · DESTROY', -S + 0.1, 10.5, 0, Math.PI / 2, 16, '#ffb02e');
-    this.sign('ECHO LINK', 'MEMORY BUFFER: 5.0 SEC', S - 0.1, 10.5, 0, -Math.PI / 2, 16, '#8c7bff');
+    this.sign('ECHO//BREAK', 'SECTOR-07  ·  COMBAT SIMULATION', 0, 12, -S + 0.1, 0, 26, '#2fe6ff');
+    this.sign('WARNING', 'HOSTILE UNITS DETECTED', 0, 12, S - 0.1, Math.PI, 20, '#ff2bd6');
+    this.sign('ARENA 07', 'REWIND · REPLAY · DESTROY', -S + 0.1, 12, 0, Math.PI / 2, 20, '#ffb02e');
+    this.sign('ECHO LINK', 'MEMORY BUFFER: 5.0 SEC', S - 0.1, 12, 0, -Math.PI / 2, 20, '#8c7bff');
 
     // 敵の出現位置
     const cand = [
       [-40, -15], [40, 15], [-40, 15], [40, -15], [-15, -40], [15, 40], [15, -40], [-15, 40],
       [0, -40], [0, 40], [-40, 0], [40, 0], [-28, 0], [28, 0], [0, -26], [0, 26],
+      [-60, -60], [60, -60], [-60, 60], [60, 60], [0, -62], [0, 62], [-62, 0], [62, 0],
+      [-30, -66], [30, -66], [-30, 66], [30, 66], [-66, -30], [66, -30], [-66, 30], [66, 30],
     ];
     for (const [x, z] of cand) if (this.free(x, 0, z, 1.0, 3.1)) this.spawnPoints.push(new THREE.Vector3(x, 0, z));
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.spawnPoints.push(new THREE.Vector3(sx * 30, 4, sz * 30));
+  }
+
+  // 中央の外側に広がる4つのエリア
+  buildDistricts(S, IN) {
+    const o = IN + 3; // 外側エリアの内側の端
+    // ---- 北：コンテナヤード ----
+    const cont = (x, z, rot, stack = 1) => {
+      for (let k = 0; k < stack; k++) {
+        if (rot) this.addBox(x, k * 2.7, z, 6.2, 2.6, 2.5, this.matCrate, { trim: k === stack - 1 ? 'amber' : null });
+        else this.addBox(x, k * 2.7, z, 2.5, 2.6, 6.2, this.matCrate, { trim: k === stack - 1 ? 'amber' : null });
+      }
+    };
+    const yard = [[-58, -56, 1, 2], [-50, -64, 0, 1], [-38, -58, 1, 1], [-30, -68, 1, 3], [-18, -56, 0, 2], [-8, -66, 1, 1],
+      [8, -58, 1, 2], [16, -68, 0, 1], [26, -56, 1, 1], [34, -64, 0, 2], [46, -58, 1, 3], [58, -66, 1, 1], [64, -54, 0, 2]];
+    for (const [x, z, r, st] of yard) cont(x, z, r, st);
+    // クレーン
+    for (const cx of [-24, 30]) {
+      this.addBox(cx - 6, 0, -72, 1.2, 16, 1.2, this.matDark, { trim: 'amber' });
+      this.addBox(cx + 6, 0, -72, 1.2, 16, 1.2, this.matDark, { trim: 'amber' });
+      this.addBox(cx, 16, -72, 14, 1, 1.4, this.matDark, { trim: 'amber' });
+      this.addBox(cx, 8, -72, 3, 1.4, 3, this.matCrate, { collide: false });
+    }
+    this.addPad(-12, -52, 0, -1, 6, 19);
+    this.addPad(40, -52, 0, -1, 6, 19);
+
+    // ---- 南：プラザ ----
+    // 階段つきのステージ
+    this.addBox(0, 0, 64, 24, 3, 10, this.matWall, { trim: 'cyan', midTrim: 1.5 });
+    for (let i = 0; i < 4; i++) this.addBox(0, 0, 58.5 - i, 10, 2.4 - i * 0.6, 1.0, this.matDark, { trim: i === 0 ? 'cyan' : null });
+    this.addBox(0, 3, 67, 6, 6, 2, this.matDark, { trim: 'magenta' });
+    // 植え込み・ベンチ
+    for (const [x, z] of [[-30, 56], [30, 56], [-44, 66], [44, 66], [-18, 72], [18, 72], [-56, 54], [56, 54]]) {
+      this.addBox(x, 0, z, 5, 1.2, 5, this.matDark, { trim: 'cyan' });
+    }
+    // 記念塔（グラップル用）
+    for (const x of [-38, 38]) {
+      this.addBox(x, 0, 62, 2.4, 20, 2.4, this.matWall, { trim: 'magenta' });
+      this.addVStrip(x + 1.22, 0.5, 19.5, 62, 'magenta');
+      this.addVStrip(x - 1.22, 0.5, 19.5, 62, 'magenta');
+    }
+
+    // ---- 東：ルーフトップ ----
+    const roofs = [[56, -36, 12, 3, 10], [66, -14, 10, 6, 12], [56, 10, 12, 9, 10], [68, 34, 10, 5, 14], [54, 56, 12, 3, 10]];
+    for (const [x, z, w, h, d] of roofs) {
+      this.addBox(x, 0, z, w, h, d, this.matWall, { trim: 'cyan', midTrim: h / 2 });
+      this.addBox(x - w / 2 + 1, h, z, 0.6, 1, d, this.matDark, { trim: 'amber' });
+    }
+    // 屋根どうしをつなぐ橋
+    this.addBox(61, 5.4, -25, 3, 0.6, 6, this.matDark, { trim: 'amber' });
+    this.addBox(61, 8.4, -2, 3, 0.6, 6, this.matDark, { trim: 'amber' });
+    this.addPad(52, -24, 1, 0, 7, 19);
+    this.addPad(50, 22, 1, 0, 7, 22);
+    this.addPad(50, 34, 1, 0, 8, 18);
+
+    // ---- 西：ファクトリー ----
+    for (const [x, z] of [[-60, -30], [-66, -10], [-60, 14], [-68, 36]]) {
+      this.addBox(x, 0, z, 6, 9, 6, this.matDark, { trim: 'magenta', midTrim: 4.5 }); // タンク
+    }
+    // 高い通路（キャットウォーク）
+    this.addBox(-54, 5, 0, 3, 0.6, 70, this.matDark, { trim: 'amber' });
+    for (const z of [-30, -15, 0, 15, 30]) this.addBox(-54, 0, z, 0.8, 5, 0.8, this.matDark);
+    this.addPad(-50, -40, -1, 0, 5, 18);
+    this.addPad(-50, 40, -1, 0, 5, 18);
+    // パイプ
+    for (const y of [2.2, 4.0]) this.addBox(-74, y, 0, 1.2, 1.2, 120, this.matDark, { trim: 'cyan' });
+    // 西のバリケード
+    for (const [x, z] of [[-60, -52], [-60, 52], [-66, 24], [-58, -2]]) this.addBox(x, 0, z, 4, 1.6, 1.2, this.matWall, { trim: 'cyan' });
   }
 
   buildSky() {
@@ -489,7 +572,7 @@ export class World {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     for (let i = 0; i < N; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = 80 + Math.random() * 180;
+      const r = 115 + Math.random() * 200;
       p.set(Math.cos(a) * r, -1, Math.sin(a) * r);
       s.set(8 + Math.random() * 14, 20 + Math.random() * (r > 160 ? 120 : 70), 8 + Math.random() * 14);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
@@ -557,7 +640,7 @@ export class World {
         else { p.y = c.max[1]; if (b.vel.y < 0) b.vel.y = 0; b.onGround = true; }
       } else {
         const stepH = c.max[1] - p.y;
-        if (b.canStep && b.wasGrounded && stepH > 0 && stepH <= 0.6 && this.free(p.x, c.max[1] + 0.01, p.z, r, h)) {
+        if (b.canStep && b.wasGrounded && stepH > 0 && stepH <= 0.65 && this.free(p.x, c.max[1] + 0.01, p.z, r, h)) {
           p.y = c.max[1] + 0.001; continue;
         }
         if (a === 0) { p.x = amt > 0 ? c.min[0] - r - 0.001 : c.max[0] + r + 0.001; b.vel.x = 0; }

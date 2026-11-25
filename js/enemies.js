@@ -20,6 +20,15 @@ export const TYPES = {
     armor: 0xc8a23a, glow: 0xffd23a, knock: 0, explR: 2, drop: 0 },
 };
 
+// 突撃して自爆する敵
+TYPES.rusher = { name: 'ラッシャー', hp: 40, r: 0.45, h: 1.0, speed: 10.5, centerY: 0.5, score: 120, range: [0, 1.2], fly: false, melee: true,
+  hitboxes: [{ y: 0.55, r: 0.58, part: 'body' }], armor: 0x3a2a2e, glow: 0xff3030, knock: 1.4, explR: 2.5, drop: 0.15 };
+// ボス
+TYPES.boss = { name: 'ウォーデン', hp: 2600, r: 1.5, h: 4.2, speed: 2.6, centerY: 2.6, score: 3000, range: [10, 24], fly: false, boss: true,
+  hitboxes: [{ y: 3.9, r: 0.62, part: 'head' }, { y: 2.7, r: 1.5, part: 'body' }, { y: 1.0, r: 1.1, part: 'body' }],
+  burst: 9, burstGap: 0.07, fireCD: [2.4, 3.2], shotSpeed: 24, dmg: 8, inacc: 1.4, shot: 'orange', armor: 0x2a2f3f, glow: 0xff2b4a,
+  muzzles: [[1.33, 3.43, 1.33], [-1.33, 3.43, 1.33]], knock: 0.04, explR: 8, drop: 1 };
+
 const GEO = {};
 const geo = (k, f) => GEO[k] || (GEO[k] = f());
 const B = (w, h, d) => geo(`b${w}_${h}_${d}`, () => new THREE.BoxGeometry(w, h, d));
@@ -99,6 +108,38 @@ function buildDrone(T, mats) {
   return { group: g, ring };
 }
 
+function buildRusher(T, mats) {
+  const g = new THREE.Group();
+  part(g, geo('rbody', () => new THREE.IcosahedronGeometry(0.48, 0)), mats.armor, 0, 0.6, 0);
+  const core = part(g, geo('rcore', () => new THREE.SphereGeometry(0.26, 14, 10)), mats.glow, 0, 0.62, 0.22);
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3;
+    const sp = part(g, geo('rspike', () => new THREE.ConeGeometry(0.08, 0.32, 6)), mats.dark, Math.cos(a) * 0.42, 0.65 + Math.sin(a) * 0.3, Math.sin(a) * 0.1);
+    sp.rotation.z = a - Math.PI / 2;
+  }
+  const legs = [];
+  for (const s of [-1, 1]) {
+    const hip = new THREE.Group(); hip.position.set(s * 0.25, 0.4, 0); g.add(hip);
+    part(hip, B(0.1, 0.4, 0.12), mats.dark, 0, -0.2, 0.05);
+    legs.push(hip);
+  }
+  return { group: g, legs, core };
+}
+
+function buildBoss(T, mats) {
+  const b = buildHumanoid(T, mats, true);
+  const g = b.group;
+  g.scale.setScalar(1.4);
+  // 頭の角と、胸の大きなコア
+  for (const s of [-1, 1]) {
+    const horn = part(g, geo('bhorn', () => new THREE.ConeGeometry(0.12, 0.7, 8)), mats.glow, s * 0.3, 3.1, 0.05);
+    horn.rotation.z = -s * 0.4;
+  }
+  part(g, geo('bcore2', () => new THREE.SphereGeometry(0.36, 18, 12)), mats.glow, 0, 2.0, 0.42);
+  part(g, B(1.9, 0.12, 1.1), mats.glow, 0, 2.62, 0);
+  return b;
+}
+
 const _v = new THREE.Vector3(), _c = new THREE.Vector3(), _a = new THREE.Vector3(), _m = new THREE.Vector3();
 
 class Enemy {
@@ -110,7 +151,8 @@ class Enemy {
     const m = mgr.mats(type);
     this.armorMat = m.armor.clone();
     const mats = { armor: this.armorMat, dark: m.dark, glow: m.glow };
-    const built = type === 'drone' ? buildDrone(T, mats) : buildHumanoid(T, mats, type === 'brute');
+    const built = type === 'drone' ? buildDrone(T, mats) : type === 'rusher' ? buildRusher(T, mats)
+      : type === 'boss' ? buildBoss(T, mats) : buildHumanoid(T, mats, type === 'brute');
     this.group = built.group; this.legs = built.legs || []; this.ring = built.ring;
     this.group.position.copy(pos);
     this.group.visible = false;
@@ -178,7 +220,9 @@ class Enemy {
       this.center(_c);
       if (this.losT <= 0) { this.losT = 0.2; this.hasLOS = g.world.los(_c, tgt.chest); }
       if (T.fly) this.updateDrone(dt, tgt); else this.updateGround(dt, tgt);
-      this.updateShooting(dt, tgt);
+      if (T.melee) this.updateRusher(dt, tgt);
+      else this.updateShooting(dt, tgt);
+      if (T.boss) this.updateBoss(dt, tgt);
     }
     // アニメーション
     const hs = Math.hypot(b.vel.x, b.vel.z);
@@ -203,7 +247,7 @@ class Enemy {
     if (!this.hasLOS) this.noLosT += dt; else { this.noLosT = 0; this.goal = null; }
     if (this.noLosT > 1.5 && !this.goal) {
       const a = Math.random() * Math.PI * 2, r = rand(10, 18);
-      this.goal = new THREE.Vector3(clamp(tgt.pos.x + Math.cos(a) * r, -42, 42), 0, clamp(tgt.pos.z + Math.sin(a) * r, -42, 42));
+      this.goal = new THREE.Vector3(clamp(tgt.pos.x + Math.cos(a) * r, -74, 74), 0, clamp(tgt.pos.z + Math.sin(a) * r, -74, 74));
     }
     if (this.goal) {
       const gx = this.goal.x - b.pos.x, gz = this.goal.z - b.pos.z, gd = Math.hypot(gx, gz);
@@ -251,6 +295,74 @@ class Enemy {
     g.world.moveBody(b, dt);
     if (b.hitWall) this.orbitDir *= -1;
     this.yaw = dampAngle(this.yaw, Math.atan2(tgt.pos.x - b.pos.x, tgt.pos.z - b.pos.z), 6, dt);
+  }
+
+  // ラッシャー：近づくと点滅して自爆
+  updateRusher(dt, tgt) {
+    const g = this.mgr.game;
+    this.center(_c);
+    const d = _c.distanceTo(tgt.chest);
+    if (this.fuse === undefined && d < 2.6) {
+      this.fuse = 0.5;
+      g.audio.play('empty', 1);
+    }
+    if (this.fuse !== undefined) {
+      this.fuse -= dt;
+      this.body.vel.multiplyScalar(0.85);
+      this.flash = (Math.floor(this.fuse * 20) % 2) ? 1 : 0;
+      if (this.fuse <= 0) {
+        const p = g.player;
+        const pd = p.chest.distanceTo(_c);
+        if (pd < 3.8 && p.alive) {
+          const f = 1 - pd / 3.8;
+          p.takeDamage(26 * g.diff.dmg * (0.4 + 0.6 * f), _c);
+          p.body.vel.addScaledVector(_v.subVectors(p.chest, _c).normalize(), 9 * f);
+        }
+        this.mgr.kill(this, 'world', false);
+      }
+    }
+  }
+
+  // ボス：地面たたき（予告の輪のあと衝撃波）と、ドローン召喚
+  updateBoss(dt, tgt) {
+    const g = this.mgr.game, fx = g.effects, b = this.body;
+    this.slamCD = (this.slamCD ?? 4) - dt;
+    this.summonCD = (this.summonCD ?? 10) - dt;
+    const dist = Math.hypot(tgt.pos.x - b.pos.x, tgt.pos.z - b.pos.z);
+    if (this.slamT !== undefined) {
+      this.slamT -= dt;
+      if (this.slamT <= 0) {
+        this.slamT = undefined;
+        const R = 10;
+        fx.ring(_c.set(b.pos.x, b.pos.y + 0.2, b.pos.z), 0xff2b4a, R, 0.5);
+        fx.explosion(_c.set(b.pos.x, b.pos.y + 0.5, b.pos.z), 4, 0xff2b4a, 1);
+        g.audio.play('shock', 1); g.shake(0.6);
+        const p = g.player;
+        const pd = Math.hypot(p.pos.x - b.pos.x, p.pos.z - b.pos.z);
+        if (pd < R && p.pos.y - b.pos.y < 1.2 && p.alive) {
+          p.takeDamage(28 * g.diff.dmg, b.pos);
+          p.body.vel.y = Math.max(p.body.vel.y, 9);
+          p.body.vel.addScaledVector(_v.set(p.pos.x - b.pos.x, 0, p.pos.z - b.pos.z).normalize(), 12);
+        }
+      }
+    } else if (this.slamCD <= 0 && dist < 10) {
+      this.slamCD = 6;
+      this.slamT = 1.0;
+      fx.ring(_c.set(b.pos.x, b.pos.y + 0.15, b.pos.z), 0xffb02e, 10, 1.0);
+      g.ui.toast('地面たたき！ ジャンプでかわせ');
+    }
+    if (this.summonCD <= 0) {
+      this.summonCD = 15;
+      for (const s of [-1, 1]) {
+        const p = new THREE.Vector3(b.pos.x + s * 3, b.pos.y + 4, b.pos.z);
+        this.mgr.spawn('drone', p, { hpMul: g.diff.hp });
+      }
+    }
+    if (this.hp < this.maxHp * 0.5 && !this.enraged) {
+      this.enraged = true;
+      this.T = Object.assign({}, this.T, { fireCD: [1.5, 2.2], speed: 3.6 });
+      g.ui.announce('WARDEN ENRAGED', '#ff2b4a');
+    }
   }
 
   updateShooting(dt, tgt) {
@@ -498,6 +610,12 @@ export class EnemyManager {
       g.combat.spawnOrb(c);
       if (e.type === 'brute') g.combat.spawnOrb(c);
     }
+    if (e.T.melee && owner !== 'world') {
+      g.combat.explode(c.clone(), 4, 60, owner === 'echo' ? 'echo' : 'player', 0xff3030, { noSelf: true });
+    } else if (e.T.melee) {
+      g.effects.explosion(c, 3.8, 0xff3030, 0.9);
+    }
+    if (e.T.boss) { g.slowmo(1.4); g.shake(1); }
     if (owner !== 'world') g.onEnemyKilled(e, owner, head);
   }
 }

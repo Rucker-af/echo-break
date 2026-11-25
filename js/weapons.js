@@ -128,6 +128,94 @@ function buildModel(def) {
 
 const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _m = new THREE.Vector3(), _p = new THREE.Vector3();
 
+// ---- 一人称の腕 ----
+// 武器ごとの握る位置（銃のモデル座標。前が -Z）
+const GRIPS = {
+  rifle: { r: [0, -0.1, 0.05], l: [0, -0.035, -0.34] },
+  shotgun: { r: [0, -0.1, 0.05], l: [0, -0.07, -0.4] },
+  rail: { r: [0, -0.1, 0.05], l: [0, -0.045, -0.36] },
+  nova: { r: [0, -0.11, -0.05], l: [0, -0.11, -0.3] },
+  arc: { r: [0, -0.1, 0.04], l: [0, -0.06, -0.2] },
+};
+const Z = new THREE.Vector3(0, 0, 1);
+
+function segment(parent, a, b, w, h, mat) {
+  const d = new THREE.Vector3().subVectors(b, a);
+  const len = d.length();
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, len), mat);
+  m.position.copy(a).addScaledVector(d, 0.5);
+  m.quaternion.setFromUnitVectors(Z, d.normalize());
+  parent.add(m);
+  return m;
+}
+
+function buildArms(defId, char, mats) {
+  const g = new THREE.Group();
+  const G = GRIPS[defId];
+  const id = char.id;
+  const k = id === 'boulder' ? 1.3 : id === 'haken' ? 0.88 : 1;
+  const sleeve = id === 'nox' ? mats.cloth : mats.armor;
+  const arms = [
+    { hand: new THREE.Vector3(...G.r), elbow: [0.1, -0.17, 0.26], shoulder: [0.1, -0.22, 0.3], side: 1 },
+    { hand: new THREE.Vector3(...G.l), elbow: [-0.2, -0.14, 0.13], shoulder: [-0.14, -0.22, 0.32], side: -1 },
+  ];
+  for (const a of arms) {
+    const E = a.hand.clone().add(new THREE.Vector3(...a.elbow));
+    const S = E.clone().add(new THREE.Vector3(...a.shoulder));
+    const dir = new THREE.Vector3().subVectors(E, a.hand).normalize();
+    const wrist = a.hand.clone().addScaledVector(dir, 0.06);
+    segment(g, S, E, 0.1 * k, 0.1 * k, sleeve);
+    const fore = segment(g, E, wrist, 0.075 * k, 0.08 * k, id === 'nox' ? mats.cloth : mats.armor);
+    // 手首の光るリング
+    segment(g, wrist.clone().addScaledVector(dir, 0.025), wrist.clone().addScaledVector(dir, 0.04), 0.082 * k, 0.088 * k, mats.glow);
+    // 手（手のひら＋指で銃をにぎる）
+    const hand = new THREE.Group();
+    hand.position.copy(a.hand);
+    hand.quaternion.setFromUnitVectors(Z, dir.clone().negate());
+    g.add(hand);
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.075, 0.085), mats.metal);
+    palm.position.set(a.side * 0.02, 0, 0.0);
+    hand.add(palm);
+    const fingers = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.03, 0.07), mats.metal);
+    fingers.position.set(-a.side * 0.03, -0.01, -0.01);
+    hand.add(fingers);
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.05), mats.metal);
+    thumb.position.set(-a.side * 0.025, 0.035, -0.02);
+    hand.add(thumb);
+    // キャラごとの腕の装備
+    if (id === 'vector') {
+      const stripe = segment(g, E, wrist, 0.012, 0.012, mats.glow);
+      stripe.position.y += 0.045; stripe.position.x += a.side * 0.01;
+    }
+    if (id === 'haken' && a.side === 1) {
+      const lau = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.16), mats.metal);
+      lau.position.copy(E).lerp(wrist, 0.55); lau.position.x += 0.055; lau.position.y += 0.02;
+      lau.quaternion.copy(fore.quaternion);
+      g.add(lau);
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.03), mats.glow);
+      tip.position.set(0, 0, -0.09); lau.add(tip);
+    }
+    if (id === 'nox' && a.side === -1) {
+      const sc = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.012, 0.06), mats.glow);
+      sc.position.copy(wrist).addScaledVector(dir, 0.05); sc.position.y += 0.048;
+      sc.quaternion.copy(fore.quaternion);
+      g.add(sc);
+    }
+    if (id === 'boulder') {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.13, 0.2), mats.armor);
+      plate.position.copy(E).lerp(wrist, 0.5); plate.position.x += a.side * 0.065;
+      plate.quaternion.copy(fore.quaternion);
+      g.add(plate);
+      if (a.side === -1) {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.12, 0.18), mats.glow);
+        edge.position.x = -0.012; plate.add(edge);
+      }
+    }
+  }
+  g.traverse((o) => { if (o.isMesh) { o.renderOrder = 10; o.castShadow = false; o.frustumCulled = false; } });
+  return g;
+}
+
 export class WeaponSystem {
   constructor(game) {
     this.game = game;
@@ -138,6 +226,20 @@ export class WeaponSystem {
     this.hip = new THREE.Vector3(0.2, -0.2, -0.36);
     this.adsPos = new THREE.Vector3(0, -0.165, -0.3);
     this.reset();
+  }
+
+  // 選んだキャラの腕を全武器に付け直す
+  setArms(char) {
+    const A = this.game.avatars;
+    const mats = {
+      armor: A.material('Main', char, false), metal: A.material('Grey', char, false),
+      glow: A.material('Glow', char, false), cloth: A.material('Cloth', char, false),
+    };
+    this.models.forEach((m, i) => {
+      if (m.arms) m.group.remove(m.arms);
+      m.arms = buildArms(this.defs[i].id, char, mats);
+      m.group.add(m.arms);
+    });
   }
 
   get def() { return this.defs[this.cur]; }

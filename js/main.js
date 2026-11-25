@@ -5,7 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { Input } from './input.js';
+import { Input, DEFAULT_KEYS, ACTION_NAMES, keyLabel } from './input.js';
 import { World } from './world.js';
 import { Effects } from './effects.js';
 import { EnemyManager } from './enemies.js';
@@ -19,6 +19,7 @@ import { AudioFX } from './audio.js';
 import { damp, hex } from './utils.js';
 import { CHARACTERS, TRAINEE, getCharacter } from './characters.js';
 import { Avatars } from './avatars.js';
+import { Profile } from './profile.js';
 
 const DIFF = [
   { name: 'EASY', dmg: 0.5, rate: 0.7, acc: 1.7, hp: 0.8 },
@@ -46,7 +47,7 @@ class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x160b28, 0.0062);
+    this.scene.fog = new THREE.FogExp2(0x160b28, 0.0048);
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, innerWidth / innerHeight, 0.03, 1500);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
@@ -54,14 +55,18 @@ class Game {
     this.time = 0; this.timeScale = 1; this.slowT = 0; this.trauma = 0;
     this.state = 'menu'; this.mode = null; this.menuT = 0;
     this.score = 0; this.combo = 0; this.comboT = 0; this.deathT = 0;
-    this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0 };
+    this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0, bosses: 0 };
     this.diff = DIFF[1];
     this.enemySlowT = 0;
     this.charId = load('eb_char', 'vector');
+    this.profile = new Profile();
+    this.modeSel = load('eb_mode', 'wave');
 
     this.audio = new AudioFX();
     this.audio.setVolume(this.settings.volume);
     this.input = new Input(this);
+    this.input.setBindings(this.settings.keys || {});
+    try { this.touchLayout = JSON.parse(load('eb_touch', '{}')) || {}; } catch (e) { this.touchLayout = {}; }
     this.effects = new Effects(this);
     this.world = new World(this);
     this.avatars = new Avatars(this);
@@ -92,7 +97,7 @@ class Game {
     if (loadText) loadText.textContent = 'LOADING TEXTURES…';
     Promise.race([Promise.all([this.world.ready, this.avatars.ready]), new Promise((r) => setTimeout(r, 9000))])
       .then(() => { this.applyDetail(); try { this.renderer.compile(this.scene, this.camera); } catch (e) { /* 失敗しても続行 */ } })
-      .then(() => setTimeout(() => { if (this.state === 'menu') this.ui.showScreen('home'); }, 200));
+      .then(() => setTimeout(() => { if (this.state === 'menu') this.enterLobby(); }, 200));
     this.refreshHome();
   }
 
@@ -164,7 +169,14 @@ class Game {
       mat.needsUpdate = true;
     };
     const seen = new Set();
-    for (const m of this.weapons.models) m.group.traverse((o) => { if (o.isMesh && !seen.has(o.material)) { seen.add(o.material); touch(o.material, null, aW, 0); } });
+    for (const m of this.weapons.models) m.group.traverse((o) => {
+      if (o.isMesh && !seen.has(o.material)) {
+        seen.add(o.material);
+        // 手元の銃はカメラに近く、つるつるだと夜の写真の明るい点が映り込んで白飛びするので、ざらつかせる
+        const mt = o.material;
+        if (mt.isMeshStandardMaterial && mt.emissive.getHex() === 0) { mt.roughness = 0.62; mt.metalness = Math.min(mt.metalness, 0.6); mt.needsUpdate = true; }
+      }
+    });
     for (const t of ['trooper', 'drone', 'brute', 'dummy']) {
       const mats = this.enemies.mats(t);
       touch(mats.armor, nE, aE, 0.8); touch(mats.dark, nE, aE, 0.8);
@@ -174,7 +186,7 @@ class Game {
   // ---- DOM ----
   bindDom() {
     const $ = (id) => document.getElementById(id);
-    addEventListener('resize', () => { this.resize(); this.checkOrientation(); });
+    addEventListener('resize', () => { this.resize(); this.checkOrientation(); if (this.state === 'playing') this.applyTouchLayout(); });
     addEventListener('orientationchange', () => setTimeout(() => { this.resize(); this.checkOrientation(); }, 300));
     try { matchMedia('(orientation: portrait)').addEventListener('change', () => setTimeout(() => this.checkOrientation(), 100)); } catch (e) { /* 古いブラウザ */ }
     document.getElementById('btnRotateSkip').addEventListener('click', () => { this.rotateSkipped = true; this.checkOrientation(); });
@@ -191,18 +203,29 @@ class Game {
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.state === 'playing' && !this.noAutoPause) this.pause(); });
 
     const click = (id, fn) => $(id).addEventListener('click', () => { this.audio.init(); this.audio.play('ui'); fn(); });
-    click('btnBattle', () => this.openCharSelect());
-    click('btnCsBack', () => { this.hideShowcase(); this.ui.showScreen('home'); });
-    click('btnDeploy', () => this.startMode('wave'));
-    click('btnTutorial', () => this.startMode('tutorial'));
+    click('btnBattle', () => this.startMode(this.modeSel));
+    click('btnChar', () => this.openCharSelect());
+    click('btnCsBack', () => this.enterLobby());
+    click('btnDeploy', () => this.enterLobby());
+    document.querySelectorAll('#modeList .mode-card').forEach((b) => b.addEventListener('click', () => {
+      if (b.disabled) return;
+      this.modeSel = b.dataset.mode; store('eb_mode', this.modeSel);
+      this.audio.init(); this.audio.play('ui'); this.refreshHome();
+    }));
+    document.querySelectorAll('#lbNav button').forEach((b) => b.addEventListener('click', () => {
+      this.audio.init(); this.audio.play('ui');
+      document.querySelectorAll('#lbNav button').forEach((x) => x.classList.toggle('on', x === b));
+      document.querySelectorAll('.lb-panel').forEach((pn) => pn.classList.toggle('on', pn.dataset.panel === b.dataset.tab));
+      if (b.dataset.tab === 'missions') { this.missionsSeen = true; this.refreshHome(); }
+    }));
     click('btnSettings', () => { this.settingsBack = 'home'; this.openSettings(); });
     click('btnSettingsBack', () => this.ui.showScreen(this.settingsBack));
     click('btnResume', () => this.tryResume());
     click('btnPauseSettings', () => { this.settingsBack = 'pause'; this.openSettings(); });
     click('btnQuit', () => this.toHome());
-    click('btnRetry', () => this.startMode(this.mode || 'wave'));
+    click('btnRetry', () => this.startMode(this.lastMode || 'wave'));
     click('btnHome', () => this.toHome());
-    click('btnTutToBattle', () => this.openCharSelect());
+    click('btnTutToBattle', () => { this.modeSel = 'wave'; store('eb_mode', 'wave'); this.toHome(); });
     click('btnTutHome', () => this.toHome());
     document.querySelectorAll('#diffSel button').forEach((b) => b.addEventListener('click', () => {
       this.diffIndex = Number(b.dataset.d); store('eb_diff', String(this.diffIndex));
@@ -230,10 +253,123 @@ class Game {
     }));
     this.refreshSettings();
     // 操作説明
-    const pc = [['WASD', '移動'], ['マウス', '視点'], ['左クリック', '射撃'], ['右クリック / V', 'エイム（ADS）'], ['SPACE', 'ジャンプ / 二段'], ['SHIFT', 'ダッシュ'], ['C', 'スライディング'], ['E', 'グラップルフック'], ['F', 'ショックウェーブ'], ['Q', 'ECHO 発動'], ['X', '必殺技（ULT）'], ['R', 'リロード'], ['1-5 / ホイール', '武器切替']];
-    const tc = [['左スティック', '移動'], ['右側ドラッグ', '視点'], ['FIRE', '押したまま狙える'], ['ADS', 'エイム切替'], ['JUMP', 'ジャンプ / 二段'], ['DASH', 'ダッシュ'], ['SLIDE', 'スライディング'], ['HOOK', 'グラップル'], ['SHOCK', '衝撃波'], ['ECHO', 'エコー発動'], ['ULT', '必殺技'], ['⇄', '武器切替']];
-    $('controlsList').innerHTML = (this.isTouch ? tc : pc).map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join('');
+    this.refreshControls();
+    // キー設定
+    click('btnKeys', () => this.openKeys());
+    click('btnKeysBack', () => this.ui.showScreen('settings'));
+    click('btnKeysReset', () => { this.settings.keys = {}; this.input.setBindings({}); this.saveSettings(); this.renderKeys(); this.refreshControls(); });
+    // ボタン配置
+    click('btnTouchEdit', () => this.openTouchEditor());
+    // 名前
+    const nm = $('sName');
+    nm.value = this.profile.name;
+    nm.addEventListener('change', () => { this.profile.name = (nm.value.trim() || 'AGENT').slice(0, 12); this.profile.save(); this.refreshHome(); });
+    nm.addEventListener('keydown', (e) => e.stopPropagation());
     this.checkOrientation();
+  }
+
+  refreshControls() {
+    const K = (a) => keyLabel(this.input.bindings[a]);
+    const pc = [[`${K('fwd')}${K('left')}${K('back')}${K('right')}`, '移動'], ['マウス', '視点'], ['左クリック', '射撃'], [`右クリック / ${K('ads')}`, 'エイム（ADS）'], [K('jump'), 'ジャンプ / 二段'], [K('dash'), 'ダッシュ'], [K('slide'), 'スライディング'], [K('grapple'), 'グラップルフック'], [K('shock'), 'スキル'], [K('echo'), 'ECHO 発動'], [K('ult'), '必殺技（ULT）'], [K('reload'), 'リロード'], [`${K('w1')} ${K('w2')} / ホイール`, '武器切替']];
+    const tc = [['左スティック', '移動'], ['右側ドラッグ', '視点'], ['FIRE', '押したまま狙える'], ['ADS', 'エイム切替'], ['JUMP', 'ジャンプ / 二段'], ['DASH', 'ダッシュ'], ['SLIDE', 'スライディング'], ['HOOK', 'グラップル'], ['SHOCK', 'スキル'], ['ECHO', 'エコー発動'], ['ULT', '必殺技'], ['⇄', '武器切替']];
+    document.getElementById('controlsList').innerHTML = (this.isTouch ? tc : pc).map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join('');
+  }
+
+  // ---- キー設定 ----
+  openKeys() { this.renderKeys(); this.ui.showScreen('keysScreen'); }
+
+  renderKeys() {
+    const list = document.getElementById('keyList');
+    list.innerHTML = Object.keys(DEFAULT_KEYS).map((a) => `<div class="keyrow"><span>${ACTION_NAMES[a]}</span><button data-a="${a}">${keyLabel(this.input.bindings[a])}</button></div>`).join('');
+    list.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      list.querySelectorAll('button').forEach((x) => x.classList.remove('wait'));
+      b.classList.add('wait'); b.textContent = 'キーを押す…';
+      this.input.capture = (code) => {
+        if (code !== 'Escape') {
+          const a = b.dataset.a, cur = { ...this.input.bindings };
+          const other = Object.keys(cur).find((k) => cur[k] === code && k !== a);
+          if (other) cur[other] = cur[a]; // 使用中なら入れ替え
+          cur[a] = code;
+          this.settings.keys = cur; this.input.setBindings(cur); this.saveSettings();
+          this.audio.play('ok');
+        }
+        this.renderKeys(); this.refreshControls();
+      };
+    }));
+  }
+
+  // ---- スマホのボタン配置 ----
+  layoutKey() { return innerWidth > innerHeight ? 'land' : 'port'; }
+
+  applyTouchLayout() {
+    const L = this.touchLayout[this.layoutKey()] || {};
+    document.querySelectorAll('#touch .tb').forEach((b) => {
+      const v = L[b.id];
+      if (!v) { b.style.left = b.style.top = b.style.right = b.style.bottom = b.style.transform = ''; return; }
+      b.style.right = 'auto'; b.style.bottom = 'auto';
+      b.style.left = `calc(${v.x}% - ${b.offsetWidth / 2}px)`;
+      b.style.top = `calc(${v.y}% - ${b.offsetHeight / 2}px)`;
+      b.style.transform = `scale(${v.s || 1})`;
+    });
+  }
+
+  openTouchEditor() {
+    const touch = document.getElementById('touch'), bar = document.getElementById('touchEditBar');
+    this.ui.showScreen(null);
+    touch.classList.remove('hidden'); touch.classList.add('editing'); bar.classList.remove('hidden');
+    this.applyTouchLayout();
+    // 今の位置を％で読み取って編集用にする
+    const edit = {};
+    document.querySelectorAll('#touch .tb').forEach((b) => {
+      const r = b.getBoundingClientRect();
+      const cur = (this.touchLayout[this.layoutKey()] || {})[b.id];
+      edit[b.id] = { x: (r.left + r.width / 2) / innerWidth * 100, y: (r.top + r.height / 2) / innerHeight * 100, s: cur ? cur.s || 1 : 1 };
+    });
+    let sel = null;
+    const size = document.getElementById('teSize'), selLabel = document.getElementById('teSel');
+    const place = (b) => {
+      const v = edit[b.id];
+      b.style.right = 'auto'; b.style.bottom = 'auto';
+      b.style.left = `calc(${v.x}% - ${b.offsetWidth / 2}px)`;
+      b.style.top = `calc(${v.y}% - ${b.offsetHeight / 2}px)`;
+      b.style.transform = `scale(${v.s})`;
+    };
+    const select = (b) => {
+      document.querySelectorAll('#touch .tb').forEach((x) => x.classList.toggle('sel', x === b));
+      sel = b; selLabel.textContent = b.textContent; size.value = edit[b.id].s;
+    };
+    const onDown = (e) => {
+      const b = e.target.closest('.tb'); if (!b) return;
+      e.preventDefault(); select(b);
+      const move = (ev) => {
+        const t = ev.touches ? ev.touches[0] : ev;
+        edit[b.id].x = Math.max(3, Math.min(97, t.clientX / innerWidth * 100));
+        edit[b.id].y = Math.max(3, Math.min(97, t.clientY / innerHeight * 100));
+        place(b);
+      };
+      const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+      addEventListener('pointermove', move); addEventListener('pointerup', up);
+    };
+    touch.addEventListener('pointerdown', onDown);
+    size.oninput = () => { if (sel) { edit[sel.id].s = Number(size.value); place(sel); } };
+    const close = (save) => {
+      touch.removeEventListener('pointerdown', onDown);
+      if (save) { this.touchLayout[this.layoutKey()] = edit; store('eb_touch', JSON.stringify(this.touchLayout)); }
+      touch.classList.remove('editing'); touch.classList.add('hidden'); bar.classList.add('hidden');
+      document.querySelectorAll('#touch .tb').forEach((x) => x.classList.remove('sel'));
+      this.applyTouchLayout();
+      this.ui.showScreen('settings');
+    };
+    document.getElementById('teSave').onclick = () => { this.audio.play('ok'); close(true); };
+    document.getElementById('teCancel').onclick = () => close(false);
+    document.getElementById('teReset').onclick = () => {
+      delete this.touchLayout[this.layoutKey()]; store('eb_touch', JSON.stringify(this.touchLayout));
+      close(false); this.openTouchEditor();
+    };
+    document.getElementById('teMirror').onclick = () => {
+      for (const id in edit) edit[id].x = 100 - edit[id].x;
+      document.querySelectorAll('#touch .tb').forEach(place);
+    };
   }
 
   checkOrientation() {
@@ -243,10 +379,47 @@ class Game {
   }
 
   refreshHome() {
+    const $ = (id) => document.getElementById(id);
+    const P = this.profile, c = getCharacter(this.charId);
     document.querySelectorAll('#diffSel button').forEach((b) => b.classList.toggle('on', Number(b.dataset.d) === this.diffIndex));
-    document.getElementById('bestScore').textContent = Number(load('eb_best', '0')).toLocaleString();
-    document.getElementById('bestWave').textContent = load('eb_bestWave', '0');
-    document.getElementById('btnTutorial').classList.toggle('recommend', load('eb_tutorial', '0') !== '1');
+    $('bestScore').textContent = Math.max(P.stats.bestScore, Number(load('eb_best', '0'))).toLocaleString();
+    $('bestWave').textContent = Math.max(P.stats.bestWave, Number(load('eb_bestWave', '0')));
+    $('btnTutorial').classList.toggle('recommend', load('eb_tutorial', '0') !== '1');
+    // プロフィール
+    $('lbLevel').textContent = P.level;
+    $('lbName').textContent = P.name;
+    $('lbTitle').textContent = P.title();
+    $('lbXp').style.width = (P.xp / P.need() * 100).toFixed(1) + '%';
+    $('lbXpText').textContent = `${P.xp} / ${P.need()} XP`;
+    // モード
+    document.querySelectorAll('#modeList .mode-card').forEach((b) => b.classList.toggle('on', b.dataset.mode === this.modeSel));
+    const mname = { wave: 'SURVIVAL', bossrush: 'BOSS RUSH', tutorial: 'TRAINING' }[this.modeSel] || 'SURVIVAL';
+    $('lbModeLabel').textContent = this.modeSel === 'tutorial' ? mname : `${mname} ・ ${DIFF[this.diffIndex].name}`;
+    $('diffSel').style.visibility = this.modeSel === 'tutorial' ? 'hidden' : 'visible';
+    // キャラ
+    $('lbcRole').textContent = c.role;
+    $('lbcName').textContent = c.name;
+    $('lbChar').style.setProperty('--char-c', hex(c.color));
+    // ミッション
+    $('missionList').innerHTML = P.missions.map((m) => {
+      const d = P.def(m), k = Math.min(1, m.progress / d.target);
+      return `<div class="mission ${k >= 1 ? 'done' : ''}"><div class="mt">${d.text}</div><div class="mx">+${d.xp} XP</div><div class="mp"><i style="width:${(k * 100).toFixed(0)}%"></i></div><div class="mn">${Math.min(m.progress, d.target)} / ${d.target}</div></div>`;
+    }).join('');
+    $('lbMissionDot').classList.toggle('on', !this.missionsSeen);
+    // 戦績
+    const S = P.stats;
+    const fav = Object.entries(S.chars).sort((a, b) => b[1] - a[1])[0];
+    const cells = [['MATCHES', S.matches], ['KILLS', S.kills], ['HEADSHOTS', S.heads], ['ECHO KILLS', S.echoKills], ['BOSSES', S.bosses], ['BEST STREAK', S.bestStreak],
+      ['BEST WAVE', S.bestWave], ['PLAY TIME', `${Math.floor(S.playSec / 60)}分`], ['MAIN', fav ? getCharacter(fav[0]).name : '-']];
+    $('statGrid').innerHTML = cells.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+  }
+
+  // ロビーに入る：選んだキャラのアバターを右側に立たせる
+  enterLobby() {
+    this.menuView = 'select';
+    this.setShowcase(getCharacter(this.charId));
+    this.refreshHome();
+    this.ui.showScreen('home');
   }
 
   refreshSettings() {
@@ -299,9 +472,9 @@ class Game {
   }
 
   placeShowcaseCamera(narrow) {
-    if (narrow) { this.camera.position.set(0, 5.6, 12); this.camera.lookAt(0, 3.75, 0); }
+    if (narrow) { const lobby = document.getElementById('home').classList.contains('show'); this.camera.position.set(0, 5.6, 12); this.camera.lookAt(0, lobby ? 4.35 : 3.75, 0); }
     else if (innerHeight <= 520) { this.camera.position.set(-0.9, 6.2, 8.2); this.camera.lookAt(-2.4, 6.0, 0); }
-    else { this.camera.position.set(-0.6, 6.2, 5.8); this.camera.lookAt(-1.75, 5.95, 0); }
+    else { this.camera.position.set(-0.7, 6.25, 6.9); this.camera.lookAt(-2.05, 5.95, 0); }
     if (this.camera.fov !== 36) { this.camera.fov = 36; this.camera.updateProjectionMatrix(); }
     this.showLight.intensity = 1.1;
   }
@@ -358,13 +531,20 @@ class Game {
   startMode(mode) {
     this.audio.init();
     this.hideShowcase();
+    this.lastMode = mode;
+    const bossRush = mode === 'bossrush';
+    if (bossRush) mode = 'wave';
+    this.waves.bossRush = bossRush;
     this.mode = mode;
     this.enemies.clear(); this.combat.clear(); this.effects.clear(); this.echo.reset();
     this.enemySlowT = 0;
     const ch = mode === 'wave' ? getCharacter(this.charId) : TRAINEE;
     this.weapons.reset(ch.weapons);
-    this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0 };
-    this.score = 0; this.combo = 0; this.comboT = 0; this.time = 0; this.timeScale = 1; this.slowT = 0; this.trauma = 0;
+    this.weapons.setArms(ch);
+    this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0, bosses: 0 };
+    this.profile.startMatch(mode === 'wave' ? this.charId : 'trainee');
+    this.score = 0; this.combo = 0; this.comboT = 0; this.time = 0;
+    this.streak = 0; this.multi = 0; this.lastKillT = -99; this.stats.bestStreak = 0; this.timeScale = 1; this.slowT = 0; this.trauma = 0;
     this.camera.fov = this.settings.fov;
     if (mode === 'wave') {
       this.diff = DIFF[this.diffIndex];
@@ -376,6 +556,8 @@ class Game {
       this.tutorial.start();
     }
     this.ui.enterGame(mode);
+    this.applyTouchLayout();
+    this.ui.setKeyLabels(this.input.bindings, keyLabel);
     this.state = 'playing';
     this.input.reset();
     this.input.enabled = true;
@@ -409,6 +591,11 @@ class Game {
   }
 
   toHome() {
+    // 途中でやめたときも、その時点までの記録と経験値を残す（チュートリアルは除く）
+    if (this.profile.match) {
+      if (this.mode === 'wave' && this.state !== 'over') this.profile.endMatch(this.stats, this.score, 'wave');
+      else if (this.state !== 'over') this.profile.match = null;
+    }
     this.state = 'menu'; this.mode = null;
     this.input.enabled = false; this.input.reset();
     if (document.pointerLockElement) document.exitPointerLock();
@@ -418,8 +605,7 @@ class Game {
     this.weapons.root.visible = false;
     this.ui.leaveGame();
     this.camera.fov = this.settings.fov; this.camera.updateProjectionMatrix();
-    this.refreshHome();
-    this.ui.showScreen('home');
+    this.enterLobby();
   }
 
   endGame() {
@@ -439,12 +625,27 @@ class Game {
     $('rEcho').textContent = this.stats.echoKills;
     $('rDiff').textContent = this.diff.name;
     $('rNew').classList.toggle('hidden', !isNew);
+    this.showXp(this.profile.endMatch(this.stats, this.score, 'wave'));
     this.ui.leaveGame();
     this.ui.showScreen('result');
   }
 
+  showXp(r) {
+    const $ = (id) => document.getElementById(id);
+    if (!r) return;
+    const P = this.profile;
+    $('rXpGain').textContent = `+${r.total} XP`;
+    $('rLv').textContent = `LV ${P.level}`;
+    $('rXpBar').style.width = '0%';
+    setTimeout(() => { $('rXpBar').style.width = (P.xp / P.need() * 100).toFixed(1) + '%'; }, 80);
+    $('rLvUp').classList.toggle('hidden', !r.levelUp);
+    $('rMissions').innerHTML = r.done.map((d) => `<div>✓ ミッション達成：${d.text}（+${d.xp} XP）</div>`).join('');
+    if (r.levelUp) this.audio.play('clear');
+  }
+
   finishTutorial() {
     if (this.mode !== 'tutorial') return;
+    this.profile.endMatch(this.stats, 0, 'tutorial');
     this.state = 'over';
     this.input.enabled = false; this.input.reset();
     if (document.pointerLockElement) document.exitPointerLock();
@@ -453,7 +654,11 @@ class Game {
   }
 
   // ---- イベント ----
-  emit(name, data) { if (this.mode === 'tutorial' && this.state === 'playing') this.tutorial.onEvent(name, data); }
+  emit(name, data) {
+    if (this.state !== 'playing') return;
+    if (this.mode === 'tutorial') this.tutorial.onEvent(name, data);
+    else if (this.mode === 'wave') this.profile.onEvent(name, data);
+  }
 
   getTargetFor(e) { return this.echo.active && e.preferEcho ? this.echo.target : this.playerTarget; }
 
@@ -484,6 +689,25 @@ class Game {
       const pts = Math.round((e.T.score + (head ? 50 : 0) + (owner === 'echo' ? 50 : 0)) * mult);
       if (this.mode === 'wave') { this.score += pts; this.ui.scorePop(`+${pts}${head ? ' HEADSHOT' : ''}${owner === 'echo' ? ' ECHO' : ''}`); }
     }
+    // 連続キル（短い時間に続けて倒す）と、死なずに倒し続けるキルストリーク
+    if (e.type !== 'dummy' && (owner === 'player' || owner === 'echo')) {
+      this.multi = this.time - this.lastKillT < 1.8 ? this.multi + 1 : 1;
+      this.lastKillT = this.time;
+      this.streak++;
+      this.stats.bestStreak = Math.max(this.stats.bestStreak || 0, this.streak);
+      const mk = { 2: 'DOUBLE KILL', 3: 'TRIPLE KILL', 4: 'QUAD KILL' }[this.multi] || (this.multi >= 5 ? 'MULTI KILL' : null);
+      if (mk) {
+        this.emit('multi');
+        this.ui.announce(mk, '#ffb02e');
+        if (this.mode === 'wave') this.score += 50 * this.multi;
+        this.audio.play('clear', 0.6);
+      }
+      this.emit('streak', { value: this.streak });
+      if (e.type === 'boss') this.stats.bosses++;
+      const st = { 5: 'KILLING SPREE', 10: 'RAMPAGE', 15: 'UNSTOPPABLE', 25: 'GODLIKE' }[this.streak];
+      if (st) { this.ui.announce(st, '#ff3ad8'); if (this.mode === 'wave') this.score += 100 * this.streak; this.audio.play('wave', 0.6); }
+      if (head) this.ui.announce('HEADSHOT', '#ffd23a');
+    }
     const wdef = owner === 'echo' ? WEAPONS[this.weapons.cur] : this.weapons.def;
     this.ui.killfeedAdd(owner, wdef, e.T.name, head);
     this.audio.play('kill');
@@ -491,6 +715,7 @@ class Game {
   }
 
   onPlayerDeath() {
+    this.streak = 0;
     this.deathT = 2.0;
     this.slowmo(1.2);
     this.input.reset();

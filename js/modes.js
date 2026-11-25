@@ -2,10 +2,13 @@
 import * as THREE from 'three';
 import { pick, rand } from './utils.js';
 
+const clampMap = (v) => Math.max(-60, Math.min(60, v));
+
 export class WaveMode {
   constructor(game) { this.game = game; }
 
   start() {
+    this.puT = 10;
     this.wave = 0; this.queue = []; this.inBreak = true; this.breakT = 2.5; this.spawnT = 0;
     this.game.ui.center('NPC BATTLE', '押し寄せる機械兵を殲滅せよ', 2.4);
   }
@@ -16,12 +19,16 @@ export class WaveMode {
     for (let i = 0; i < 3 + n; i++) q.push('trooper');
     if (n >= 2) for (let i = 0; i < Math.floor(n * 0.8); i++) q.push('drone');
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
+    if (n >= 2) for (let i = 0; i < Math.floor(n * 0.6); i++) q.splice(Math.floor(Math.random() * q.length), 0, 'rusher');
     if (n >= 3) for (let i = 0; i < Math.floor((n - 1) / 2); i++) q.splice(Math.floor(q.length * (0.4 + Math.random() * 0.6)), 0, 'brute');
-    this.queue = q; this.total = q.length;
+    const bossWave = this.bossRush || n % 5 === 0;
+    if (bossWave) { q.length = Math.ceil(q.length * (this.bossRush ? 0.3 : 0.5)); q.unshift('boss'); }
+    this.queue = q; this.total = q.length; this.bossWave = bossWave;
     this.inBreak = false; this.spawnT = 0.5;
     g.stats.wave = n;
-    const sub = n === 1 ? 'トルーパー部隊接近' : n === 2 ? 'ドローン飛来！ 上空に注意' : n === 3 ? '重装兵ブルート出現！' : `敵 ${q.length} 体`;
-    g.ui.center(`WAVE ${n}`, sub, 2.2);
+    g.emit('wave', { value: n });
+    const sub = bossWave ? '巨大兵器ウォーデン接近！ 赤い頭が弱点' : n === 1 ? 'トルーパー部隊接近' : n === 2 ? 'ドローンと自爆兵ラッシャーに注意' : n === 3 ? '重装兵ブルート出現！' : `敵 ${q.length} 体`;
+    g.ui.center(bossWave ? `WAVE ${n} — BOSS` : `WAVE ${n}`, sub, 2.4);
     g.audio.play('wave');
   }
 
@@ -29,6 +36,9 @@ export class WaveMode {
 
   update(dt) {
     const g = this.game;
+    // パワーアップを定期的に置く
+    this.puT = (this.puT ?? 12) - dt;
+    if (this.puT <= 0) { this.puT = 20; if (g.combat.powerups.length < 2) g.combat.spawnPowerup(); }
     if (this.inBreak) {
       this.breakT -= dt;
       if (this.breakT <= 0) this.nextWave();
@@ -51,12 +61,14 @@ export class WaveMode {
 
   spawn(type) {
     const g = this.game, pp = g.player.pos;
-    let pts = g.world.spawnPoints.filter((p) => p.distanceTo(pp) > 18);
+    let pts = g.world.spawnPoints.filter((p) => { const d = p.distanceTo(pp); return d > 18 && d < 62; });
     if (type === 'brute') pts = pts.filter((p) => p.y < 1);
+    if (type === 'boss') pts = pts.filter((p) => p.y < 1 && g.world.free(p.x, 0, p.z, 1.7, 4.4));
     if (!pts.length) pts = g.world.spawnPoints;
     const p = pick(pts).clone();
     p.x += rand(-2, 2); p.z += rand(-2, 2);
     if (type === 'drone') p.y = rand(5, 8);
+    if (type === 'boss') { p.y = 0; p.copy(pick(pts)); }
     const yaw = Math.atan2(pp.x - p.x, pp.z - p.z);
     g.enemies.spawn(type, p, { hpMul: g.diff.hp * (1 + 0.07 * (this.wave - 1)), yaw });
   }

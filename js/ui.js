@@ -11,11 +11,11 @@ export class UI {
     this.g = game;
     const ids = ['hud', 'hpNum', 'hpFill', 'hpGhost', 'ammoCur', 'ammoMax', 'weaponName', 'weaponBox', 'reloadBar', 'slots', 'waveLabel', 'scoreLabel', 'comboLabel', 'enemyLabel',
       'killfeed', 'centerMsg', 'hitmarker', 'crosshair', 'dmgVignette', 'dmgDirs', 'dmgNums', 'scorePops', 'rec', 'recTime', 'skDash', 'skGrapple', 'skShock', 'skEcho', 'skUlt',
-      'scope', 'clickToPlay', 'tutorial', 'tStep', 'tText', 'tProg', 'tCount', 'touch', 'topbar', 'toastBox', 'speed', 'echoBannerEl', 'flashFx'];
+      'scope', 'clickToPlay', 'tutorial', 'tStep', 'tText', 'tProg', 'tCount', 'touch', 'topbar', 'toastBox', 'speed', 'echoBannerEl', 'flashFx', 'radar', 'announceBox', 'bossBar', 'bossFill', 'buffs'];
     for (const id of ids) this[id] = $(id);
     this.cache = {}; this.nums = []; this.ghost = 100; this.vig = 0; this.centerT = 0;
     this.slotEls = [];
-    this.screens = ['loading', 'home', 'charSelect', 'settings', 'pause', 'result', 'tutDone'];
+    this.screens = ['loading', 'home', 'charSelect', 'settings', 'keysScreen', 'pause', 'result', 'tutDone'];
   }
 
   txt(key, el, v) { if (this.cache[key] !== v) { this.cache[key] = v; el.textContent = v; } }
@@ -25,6 +25,12 @@ export class UI {
     for (const s of this.screens) $(s).classList.toggle('show', s === name);
   }
   showOverlay(name, on) { $(name).classList.toggle('show', on); }
+
+  setKeyLabels(b, label) {
+    const set = (id, a) => { const el = $(id).querySelector('.sk-key'); if (el) el.textContent = label(b[a]); };
+    set('skDash', 'dash'); set('skGrapple', 'grapple'); set('skShock', 'shock'); set('skEcho', 'echo'); set('skUlt', 'ult');
+    const h = $('adsHint'); if (h) h.textContent = `ADS（構える）：右クリック / ${label(b.ads)}`;
+  }
 
   enterGame(mode) {
     this.showScreen(null);
@@ -83,6 +89,16 @@ export class UI {
     f.style.background = color;
     f.classList.remove('go'); void f.offsetWidth;
     f.classList.add('go');
+  }
+
+  announce(text, color = '#ffffff') {
+    const el = document.createElement('div');
+    el.className = 'ann';
+    el.textContent = text;
+    el.style.setProperty('--c', color);
+    this.announceBox.prepend(el);
+    while (this.announceBox.children.length > 3) this.announceBox.lastChild.remove();
+    setTimeout(() => el.remove(), 1900);
   }
 
   speedLines() {
@@ -238,7 +254,56 @@ export class UI {
       n.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%,-50%) scale(${(0.8 + n.life * 0.5).toFixed(2)})`;
       n.el.style.opacity = Math.min(1, n.life * 3).toFixed(2);
     }
+    this.drawRadar();
+    // ボスの体力
+    const boss = g.enemies.list.find((e) => e.alive && e.T.boss && e.state === 'active');
+    this.cls(this.bossBar, 'hidden', !boss);
+    if (boss) this.bossFill.style.width = Math.max(0, boss.hp / boss.maxHp * 100).toFixed(1) + '%';
+    // パワーアップの残り時間
+    const chips = [];
+    if (p.buffs.dmg > 0) chips.push(`<span style="--c:#ff3d5a">DMG ×1.5 <b>${Math.ceil(p.buffs.dmg)}</b></span>`);
+    if (p.buffs.haste > 0) chips.push(`<span style="--c:#3aff9a">HASTE <b>${Math.ceil(p.buffs.haste)}</b></span>`);
+    if (p.overdriveT > 0) chips.push(`<span style="--c:#3ee8ff">OVERDRIVE <b>${Math.ceil(p.overdriveT)}</b></span>`);
+    if (g.enemySlowT > 0) chips.push(`<span style="--c:#ff3ad8">CHRONO <b>${Math.ceil(g.enemySlowT)}</b></span>`);
+    const html = chips.join('');
+    if (this.cache.buffs !== html) { this.cache.buffs = html; this.buffs.innerHTML = html; }
     this.cls(this.clickToPlay, 'hidden', g.isTouch || g.input.locked || g.state !== 'playing');
+  }
+
+  // レーダー：周り50mの敵・回復・エコーを、自分の向きを上にして表示
+  drawRadar() {
+    const c = this.radar, ctx = c.getContext('2d'), g = this.g, p = g.player;
+    const W = c.width, R = W / 2 - 4, range = 50;
+    ctx.clearRect(0, 0, W, W);
+    ctx.save();
+    ctx.translate(W / 2, W / 2);
+    ctx.fillStyle = 'rgba(6,10,24,0.62)'; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(62,232,255,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(62,232,255,0.15)'; ctx.stroke();
+    const sweep = (g.time * 2) % (Math.PI * 2);
+    ctx.fillStyle = 'rgba(62,232,255,0.08)'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, sweep - 0.5, sweep); ctx.fill();
+    const sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
+    const dot = (x, z, color, r) => {
+      const dx = x - p.pos.x, dz = z - p.pos.z;
+      let lx = dx * cy - dz * sy, lz = dx * sy + dz * cy;
+      const d = Math.hypot(lx, lz);
+      const k = R / range;
+      let px = lx * k, py = lz * k;
+      if (d > range) { px = lx / d * (R - 3); py = lz / d * (R - 3); r *= 0.7; }
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+    };
+    for (const o of g.combat.orbs) dot(o.pos.x, o.pos.z, '#3aff9a', 2.5);
+    for (const pu of g.combat.powerups || []) dot(pu.pos.x, pu.pos.z, '#ffd23a', 3.5);
+    for (const e of g.enemies.list) {
+      if (!e.alive) continue;
+      const above = e.pos.y - p.pos.y > 3, below = p.pos.y - e.pos.y > 3;
+      dot(e.pos.x, e.pos.z, e.type === 'boss' ? '#ff2b4a' : e.state === 'spawn' ? 'rgba(255,80,100,0.4)' : (above || below) ? '#ff9aa8' : '#ff3d5a', e.type === 'boss' ? 6 : e.type === 'brute' ? 4.2 : 3);
+    }
+    if (g.echo.active) dot(g.echo.pos.x, g.echo.pos.z, '#9d7bff', 3.5);
+    // 自分（上向きの矢印）
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
+    ctx.restore();
   }
 
   skill(el, cd, max, active) {

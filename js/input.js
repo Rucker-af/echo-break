@@ -1,14 +1,26 @@
 // 入力：キーボード / マウス / タッチを「アクション名」にまとめる
-const KEYMAP = {
-  KeyW: 'fwd', ArrowUp: 'fwd', KeyS: 'back', ArrowDown: 'back',
-  KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
-  Space: 'jump', ShiftLeft: 'dash', ShiftRight: 'dash',
-  KeyC: 'slide', ControlLeft: 'slide',
-  KeyE: 'grapple', KeyF: 'shock', KeyQ: 'echo', KeyR: 'reload',
-  Digit1: 'w1', Digit2: 'w2', Digit3: 'w3', Digit4: 'w4', Digit5: 'w5',
-  KeyV: 'ads', KeyX: 'ult',
-  KeyP: 'pause',
+// 変更できるキー（アクション → キー）
+export const DEFAULT_KEYS = {
+  fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', dash: 'ShiftLeft', slide: 'KeyC',
+  grapple: 'KeyE', shock: 'KeyF', echo: 'KeyQ', ult: 'KeyX', reload: 'KeyR', ads: 'KeyV', w1: 'Digit1', w2: 'Digit2', pause: 'KeyP',
 };
+export const ACTION_NAMES = {
+  fwd: '前へ', back: '後ろへ', left: '左へ', right: '右へ', jump: 'ジャンプ', dash: 'ダッシュ', slide: 'スライディング',
+  grapple: 'グラップルフック', shock: 'スキル', echo: 'ECHO', ult: '必殺技', reload: 'リロード', ads: 'エイム（右クリックと併用）', w1: '武器1', w2: '武器2', pause: '一時停止',
+};
+// 常に使える予備のキー
+const FIXED = { ArrowUp: 'fwd', ArrowDown: 'back', ArrowLeft: 'left', ArrowRight: 'right', Digit3: 'w3', Digit4: 'w4', Digit5: 'w5' };
+
+export function keyLabel(code) {
+  if (!code) return '-';
+  const named = { Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'R-SHIFT', ControlLeft: 'CTRL', ControlRight: 'R-CTRL', AltLeft: 'ALT', AltRight: 'R-ALT', Tab: 'TAB', CapsLock: 'CAPS', Enter: 'ENTER', Backspace: 'BS', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' };
+  if (named[code]) return named[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'NUM' + code.slice(6);
+  if (code.startsWith('Arrow')) return code.slice(5).toUpperCase();
+  return code.toUpperCase();
+}
 
 export class Input {
   constructor(game) {
@@ -26,14 +38,17 @@ export class Input {
     this.joyId = null;
     this.joyBase = document.getElementById('joyBase');
     this.joyKnob = document.getElementById('joyKnob');
+    this.capture = null;
+    this.setBindings(DEFAULT_KEYS);
 
     addEventListener('keydown', (e) => {
-      const a = KEYMAP[e.code];
+      if (this.capture) { e.preventDefault(); const cb = this.capture; this.capture = null; cb(e.code); return; }
+      const a = this.keymap[e.code];
       if (!a || !this.enabled) return;
       e.preventDefault();
       if (!e.repeat) this.press(a);
     });
-    addEventListener('keyup', (e) => { const a = KEYMAP[e.code]; if (a) this.release(a); });
+    addEventListener('keyup', (e) => { const a = this.keymap[e.code]; if (a) this.release(a); });
     addEventListener('blur', () => this.reset());
     document.addEventListener('mousedown', (e) => {
       if (!this.enabled || !this.locked) return;
@@ -58,6 +73,12 @@ export class Input {
     addEventListener('touchmove', (e) => this.onTouchMove(e), opt);
     addEventListener('touchend', (e) => this.onTouchEnd(e), opt);
     addEventListener('touchcancel', (e) => this.onTouchEnd(e), opt);
+  }
+
+  setBindings(b) {
+    this.bindings = Object.assign({}, DEFAULT_KEYS, b);
+    this.keymap = Object.assign({}, FIXED);
+    for (const [a, code] of Object.entries(this.bindings)) this.keymap[code] = a;
   }
 
   press(a) {

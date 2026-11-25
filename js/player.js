@@ -42,6 +42,7 @@ export class Player {
     this.grapple.active = false; this.grappleCD = 0; this.shockCD = 0;
     this.echoMeter = 0; this.ultMeter = 0;
     this.overdriveT = 0; this.meteor = null;
+    this.buffs = { dmg: 0, haste: 0 };
     this.eye = 1.62; this.landDip = 0; this.fovKick = 0; this.strafe = 0;
     this.lookAccum = 0; this.moveAccum = 0;
     this.rope.visible = false;
@@ -136,6 +137,8 @@ export class Player {
     this.echoMeter = Math.min(100, this.echoMeter + dt * 1.3);
     this.ultMeter = Math.min(100, this.ultMeter + dt * 1.0);
     if (this.overdriveT > 0) this.overdriveT -= dt;
+    if (this.buffs.dmg > 0) this.buffs.dmg -= dt;
+    if (this.buffs.haste > 0) { this.buffs.haste -= dt; this.dashRecharge += dt; }
 
     // スキル
     if (input.pressed('grapple')) this.toggleGrapple();
@@ -285,7 +288,8 @@ export class Player {
     this.chest.set(b.pos.x, b.pos.y + b.h * 0.68, b.pos.z);
   }
 
-  moveSpeed() { return SPEED * this.char.speed * (this.overdriveT > 0 ? 1.3 : 1); }
+  moveSpeed() { return SPEED * this.char.speed * (this.overdriveT > 0 ? 1.3 : 1) * (this.buffs.haste > 0 ? 1.3 : 1); }
+  dmgMul() { return this.buffs.dmg > 0 ? 1.5 : 1; }
 
   // 必殺技
   activateUlt() {
