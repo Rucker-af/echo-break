@@ -57,6 +57,10 @@ export class AudioFX {
     const v = vol;
     switch (name) {
       case 'rifle': this.noise(0.12, { type: 'bandpass', f: 2600, f2: 600, q: 0.8, gain: 0.5 * v }); this.tone(0.09, { type: 'square', f: 340, f2: 90, gain: 0.16 * v }); break;
+      case 'smg': this.noise(0.08, { type: 'bandpass', f: 3200, f2: 900, q: 0.9, gain: 0.4 * v }); this.tone(0.06, { type: 'square', f: 420, f2: 140, gain: 0.1 * v }); break;
+      case 'dmr': this.noise(0.22, { type: 'bandpass', f: 2200, f2: 300, q: 0.7, gain: 0.7 * v }); this.tone(0.18, { type: 'sawtooth', f: 260, f2: 60, gain: 0.25 * v }); break;
+      case 'grav': this.tone(1.1, { type: 'sawtooth', f: 520, f2: 45, gain: 0.22 * v }); this.tone(1.1, { f: 80, f2: 30, gain: 0.5 * v }); break;
+      case 'unlock': [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(0.35, { type: 'triangle', f, gain: 0.14 * v, delay: i * 0.07 })); break;
       case 'shotgun': this.noise(0.38, { f: 3200, f2: 180, gain: 0.95 * v }); this.tone(0.22, { type: 'sawtooth', f: 140, f2: 40, gain: 0.35 * v });
         this.noise(0.07, { type: 'highpass', f: 600, gain: 0.25 * v, delay: 0.42 }); this.noise(0.07, { type: 'highpass', f: 800, gain: 0.25 * v, delay: 0.58 }); break;
       case 'rail': this.tone(0.55, { type: 'sawtooth', f: 1900, f2: 110, gain: 0.28 * v }); this.noise(0.45, { type: 'bandpass', f: 5200, f2: 400, q: 2, gain: 0.5 * v }); this.tone(0.6, { f: 90, f2: 40, gain: 0.5 * v }); break;

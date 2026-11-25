@@ -11,7 +11,7 @@ import { Effects } from './effects.js';
 import { EnemyManager } from './enemies.js';
 import { Combat } from './combat.js';
 import { Player } from './player.js';
-import { WeaponSystem, WEAPONS } from './weapons.js';
+import { WeaponSystem, WEAPONS, unlockLevel } from './weapons.js';
 import { EchoSystem } from './echo.js';
 import { UI } from './ui.js';
 import { WaveMode, TutorialMode } from './modes.js';
@@ -217,6 +217,7 @@ class Game {
       document.querySelectorAll('#lbNav button').forEach((x) => x.classList.toggle('on', x === b));
       document.querySelectorAll('.lb-panel').forEach((pn) => pn.classList.toggle('on', pn.dataset.panel === b.dataset.tab));
       if (b.dataset.tab === 'missions') { this.missionsSeen = true; this.refreshHome(); }
+      if (b.dataset.tab === 'loadout') { this.renderLoadout(); if (this.profile.newWeapons.length) { this.loadoutSeenNew = this.profile.newWeapons.slice(); this.profile.newWeapons = []; this.profile.save(); this.refreshHome(); } }
     }));
     click('btnSettings', () => { this.settingsBack = 'home'; this.openSettings(); });
     click('btnSettingsBack', () => this.ui.showScreen(this.settingsBack));
@@ -400,6 +401,10 @@ class Game {
     $('lbcRole').textContent = c.role;
     $('lbcName').textContent = c.name;
     $('lbChar').style.setProperty('--char-c', hex(c.color));
+    const LO = this.loadoutFor(c);
+    $('lbcLoad').innerHTML = `<b>${WEAPONS[LO[0]].short}</b> + <b>${WEAPONS[LO[1]].short}</b>`;
+    $('lbLoadDot').classList.toggle('on', P.newWeapons.length > 0);
+    this.renderLoadout();
     // ミッション
     $('missionList').innerHTML = P.missions.map((m) => {
       const d = P.def(m), k = Math.min(1, m.progress / d.target);
@@ -412,6 +417,54 @@ class Game {
     const cells = [['MATCHES', S.matches], ['KILLS', S.kills], ['HEADSHOTS', S.heads], ['ECHO KILLS', S.echoKills], ['BOSSES', S.bosses], ['BEST STREAK', S.bestStreak],
       ['BEST WAVE', S.bestWave], ['PLAY TIME', `${Math.floor(S.playSec / 60)}分`], ['MAIN', fav ? getCharacter(fav[0]).name : '-']];
     $('statGrid').innerHTML = cells.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+  }
+
+  // 持っていく武器：メインはキャラ固有、サブは選んだもの（解放済みでなければキャラの初期サブ）
+  loadoutFor(c) {
+    const main = c.weapons[0];
+    let sub = this.profile.loadout[c.id];
+    if (sub === undefined || !WEAPONS[sub] || sub === main || unlockLevel(sub) > this.profile.level) sub = c.weapons[1];
+    return [main, sub];
+  }
+
+  renderLoadout() {
+    const $ = (id) => document.getElementById(id);
+    const c = getCharacter(this.charId), P = this.profile;
+    const [main, sub] = this.loadoutFor(c);
+    const bars = (w) => {
+      const dmg = Math.min(1, (w.dmg * (w.pellets || 1)) / 120);
+      const rate = Math.min(1, w.rpm * (w.burst ? 2.2 : 1) / 900);
+      const range = Math.min(1, w.range / 260);
+      return `<div class="ld-bars">威力<i style="--v:${(dmg * 100).toFixed(0)}%"></i>連射<i style="--v:${(rate * 100).toFixed(0)}%"></i>射程<i style="--v:${(range * 100).toFixed(0)}%"></i></div>`;
+    };
+    const desc = (w) => w.desc || { rifle: '扱いやすい万能ライフル', shotgun: '近距離で一撃が重い散弾', rail: '貫通する高威力の狙撃', nova: '爆発で範囲にダメージ', arc: '近くの敵に自動で電撃が飛ぶ' }[w.id];
+    const mw = WEAPONS[main];
+    $('ldMain').style.setProperty('--wc', hex(mw.color));
+    $('ldMain').innerHTML = `<span class="ld-tag">MAIN ・ ${c.name} 固有</span><span></span><span class="ld-n">${mw.name}</span><span></span><div class="ld-d">${desc(mw)}</div>${bars(mw)}`;
+    const fresh = this.loadoutSeenNew || [];
+    $('ldGrid').innerHTML = WEAPONS.map((w, i) => {
+      if (i === main) return '';
+      const lv = unlockLevel(i), locked = lv > P.level;
+      const cls = ['ld-card', i === sub ? 'on' : '', locked ? 'locked' : ''].join(' ');
+      const isNew = !locked && i !== sub && fresh.includes(i);
+      return `<button class="${cls}" data-w="${i}" style="--wc:${hex(w.color)}" ${locked ? 'disabled' : ''}>
+        <span class="ld-tag">${locked ? '🔒 LOCKED' : 'SUB'}</span><span></span><span class="ld-n">${w.name}</span><span></span>
+        <div class="ld-d">${locked ? `Lv${lv} で解放（あと ${lv - P.level} レベル）` : desc(w)}</div>${bars(w)}${isNew ? '<i class="new">NEW</i>' : ''}</button>`;
+    }).join('');
+    $('ldGrid').querySelectorAll('.ld-card:not(.locked)').forEach((b) => b.addEventListener('click', () => {
+      P.loadout[c.id] = Number(b.dataset.w); P.save();
+      this.audio.init(); this.audio.play('switch');
+      this.refreshHome();
+    }));
+  }
+
+  // レベルアップで新しく使えるようになった武器を記録する
+  checkUnlocks(r) {
+    if (!r) return [];
+    const got = [];
+    WEAPONS.forEach((w, i) => { const lv = unlockLevel(i); if (lv > r.before.level && lv <= r.after.level) got.push(i); });
+    if (got.length) { this.profile.newWeapons.push(...got); this.profile.save(); }
+    return got;
   }
 
   // ロビーに入る：選んだキャラのアバターを右側に立たせる
@@ -502,7 +555,7 @@ class Game {
     const c = getCharacter(this.charId);
     this.setShowcase(c);
     document.querySelectorAll('.cs-card').forEach((b) => b.classList.toggle('on', b.dataset.id === c.id));
-    const W = c.weapons.map((i) => `<span class="wtag" style="--wc:${hex(WEAPONS[i].color)}">${WEAPONS[i].name}</span>`).join('');
+    const W = this.loadoutFor(c).map((i) => `<span class="wtag" style="--wc:${hex(WEAPONS[i].color)}">${WEAPONS[i].name}</span>`).join('');
     const key = this.isTouch ? { skill: c.skill === 'scan' ? 'SCAN' : 'SHOCK', ult: 'ULT', echo: 'ECHO' } : { skill: 'F', ult: 'X', echo: 'Q' };
     document.getElementById('csDetail').innerHTML = `
       <div><div class="big" style="color:${hex(c.color)}">${c.name}</div><div>${c.role} ・ HP <b>${c.hp}</b> ・ 移動 <b>${Math.round(c.speed * 100)}%</b> ・ ダッシュ <b>${c.dashMax}</b>回</div><div>${c.desc}</div></div>
@@ -539,7 +592,7 @@ class Game {
     this.enemies.clear(); this.combat.clear(); this.effects.clear(); this.echo.reset();
     this.enemySlowT = 0;
     const ch = mode === 'wave' ? getCharacter(this.charId) : TRAINEE;
-    this.weapons.reset(ch.weapons);
+    this.weapons.reset(mode === 'wave' ? this.loadoutFor(ch) : ch.weapons);
     this.weapons.setArms(ch);
     this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, echoKills: 0, wave: 0, bosses: 0 };
     this.profile.startMatch(mode === 'wave' ? this.charId : 'trainee');
@@ -639,13 +692,17 @@ class Game {
     $('rXpBar').style.width = '0%';
     setTimeout(() => { $('rXpBar').style.width = (P.xp / P.need() * 100).toFixed(1) + '%'; }, 80);
     $('rLvUp').classList.toggle('hidden', !r.levelUp);
-    $('rMissions').innerHTML = r.done.map((d) => `<div>✓ ミッション達成：${d.text}（+${d.xp} XP）</div>`).join('');
-    if (r.levelUp) this.audio.play('clear');
+    const got = this.checkUnlocks(r);
+    $('rMissions').innerHTML = r.done.map((d) => `<div>✓ ミッション達成：${d.text}（+${d.xp} XP）</div>`).join('')
+      + got.map((i) => `<div class="rx-unlock">🔓 NEW WEAPON 解放：${WEAPONS[i].name}（ロビーの「装備」でサブ武器に設定できます）</div>`).join('');
+    if (got.length) this.audio.play('unlock'); else if (r.levelUp) this.audio.play('clear');
   }
 
   finishTutorial() {
     if (this.mode !== 'tutorial') return;
-    this.profile.endMatch(this.stats, 0, 'tutorial');
+    const got = this.checkUnlocks(this.profile.endMatch(this.stats, 0, 'tutorial'));
+    document.getElementById('tutUnlock').innerHTML = got.map((i) => `<div class="rx-unlock">🔓 NEW WEAPON 解放：${WEAPONS[i].name}（ロビーの「装備」で設定）</div>`).join('');
+    if (got.length) this.audio.play('unlock');
     this.state = 'over';
     this.input.enabled = false; this.input.reset();
     if (document.pointerLockElement) document.exitPointerLock();

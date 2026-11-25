@@ -268,7 +268,9 @@ class Enemy {
     const ml = Math.hypot(mx, mz);
     if (ml > 1) { mx /= ml; mz /= ml; }
     const sp = T.speed * (this.stagger > 0 ? 0.25 : 1) * (this.burst > 0 ? 0.5 : 1);
-    const k = b.onGround ? 6 : 1;
+    // グラビティ砲に吸われている間は、自分ではほとんど動けない
+    const k = this.pulledT > 0 ? 0.3 : b.onGround ? 6 : 1;
+    if (this.pulledT > 0) this.pulledT -= dt;
     b.vel.x = damp(b.vel.x, mx * sp, k, dt);
     b.vel.z = damp(b.vel.z, mz * sp, k, dt);
     b.vel.y -= GRAV * dt;
@@ -289,7 +291,8 @@ class Enemy {
     const gy = Math.max(3.5, tgt.pos.y + 4 + Math.sin(g.time * 1.3 + this.seed) * 1.5);
     _v.set(gx - b.pos.x, gy - b.pos.y, gz - b.pos.z).multiplyScalar(1.5);
     const l = _v.length(); if (l > T.speed) _v.multiplyScalar(T.speed / l);
-    const k = this.stagger > 0 ? 0.6 : 3;
+    const k = this.pulledT > 0 ? 0.3 : this.stagger > 0 ? 0.6 : 3;
+    if (this.pulledT > 0) this.pulledT -= dt;
     b.vel.x = damp(b.vel.x, _v.x, k, dt); b.vel.y = damp(b.vel.y, _v.y, k, dt); b.vel.z = damp(b.vel.z, _v.z, k, dt);
     b.wasGrounded = false;
     g.world.moveBody(b, dt);

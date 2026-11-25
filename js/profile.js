@@ -28,6 +28,8 @@ export class Profile {
     this.level = d.level || 1;
     this.xp = d.xp || 0;
     this.stats = Object.assign({ matches: 0, kills: 0, heads: 0, echoKills: 0, bosses: 0, bestWave: 0, bestScore: 0, bestStreak: 0, playSec: 0, chars: {} }, d.stats || {});
+    this.loadout = d.loadout || {}; // キャラごとのサブ武器（WEAPONSの番号）
+    this.newWeapons = d.newWeapons || []; // 解放されたがまだ装備画面で見ていない武器
     this.missions = (d.missions || []).filter((m) => MISSION_POOL.some((p) => p.id === m.id));
     this.fill();
     this.match = null;
@@ -35,7 +37,7 @@ export class Profile {
 
   save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ name: this.name, level: this.level, xp: this.xp, stats: this.stats, missions: this.missions }));
+      localStorage.setItem(KEY, JSON.stringify({ name: this.name, level: this.level, xp: this.xp, stats: this.stats, missions: this.missions, loadout: this.loadout, newWeapons: this.newWeapons }));
     } catch (e) { /* 保存できない環境 */ }
   }
 

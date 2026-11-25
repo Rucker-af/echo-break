@@ -1,4 +1,4 @@
-// 武器：5種類の定義、手元の銃モデル（ビューモデル）、射撃・リロード・切替
+// 武器：9種類の定義（6〜9番目はレベルで解放）、手元の銃モデル（ビューモデル）、射撃・リロード・切替
 import * as THREE from 'three';
 import { clamp, damp, rand, lerp } from './utils.js';
 
@@ -13,7 +13,23 @@ export const WEAPONS = [
     spread: 0.005, adsSpread: 0, recoil: 0.045, range: 200, color: 0xb6ff3a, adsFov: 64, sound: 'launcher', shake: 0.2 },
   { id: 'arc', name: 'CHAIN アーク', short: 'ARC', type: 'arc', auto: true, rpm: 600, dmg: 6.5, mag: 45, reload: 2.1,
     spread: 0, adsSpread: 0, recoil: 0.002, range: 22, cone: 0.1, chains: 1, chainRange: 7, color: 0x8c7bff, adsFov: 68, sound: 'arc', shake: 0.02 },
+  // ここからレベルで解放される武器（unlock = 必要レベル）
+  { id: 'smg', name: 'VIPER SMG', short: 'SMG', type: 'hitscan', auto: true, rpm: 900, dmg: 11, headMul: 1.6, mag: 40, reload: 1.3, unlock: 2,
+    spread: 0.03, adsSpread: 0.012, recoil: 0.007, pellets: 1, range: 90, falloff: [15, 45], color: 0x5dffb0, adsFov: 62, tracer: 0.014, sound: 'smg', shake: 0.03,
+    desc: '連射がとても速い。近〜中距離で撃ち続けると強い' },
+  { id: 'burst', name: 'TRIAD バーストライフル', short: 'BURST', type: 'hitscan', auto: false, burst: 3, burstGap: 0.065, rpm: 170, dmg: 24, headMul: 2.0, mag: 30, reload: 1.7, unlock: 4,
+    spread: 0.012, adsSpread: 0.0015, recoil: 0.012, pellets: 1, range: 200, color: 0xffd84a, adsFov: 52, tracer: 0.018, sound: 'rifle', shake: 0.06,
+    desc: '1回のクリックで3連射。頭に3発まとめると大ダメージ' },
+  { id: 'dmr', name: 'HALCYON DMR', short: 'DMR', type: 'hitscan', auto: false, rpm: 230, dmg: 46, headMul: 2.3, mag: 12, reload: 1.8, unlock: 6,
+    spread: 0.01, adsSpread: 0, recoil: 0.028, pellets: 1, range: 260, color: 0x5aa8ff, adsFov: 40, tracer: 0.022, sound: 'dmr', shake: 0.12,
+    desc: '1発ずつ正確に撃つ中〜遠距離向け。レールガンより速く撃てる' },
+  { id: 'grav', name: 'SINGULARITY グラビティ砲', short: 'GRAV', type: 'projectile', auto: false, rpm: 40, dmg: 95, radius: 6, speed: 30, mag: 3, reload: 2.4, unlock: 9,
+    gravity: true, pullR: 10, pullTime: 1.1, spread: 0.004, adsSpread: 0, recoil: 0.05, range: 200, color: 0xc06bff, adsFov: 64, sound: 'launcher', shake: 0.22,
+    desc: '着弾点に小さなブラックホールを作り、敵を吸い寄せてから爆発する' },
 ];
+
+// レベルで使えるかどうか
+export const unlockLevel = (i) => WEAPONS[i].unlock || 1;
 
 let flashTex = null;
 function getFlashTex() {
@@ -106,9 +122,56 @@ function buildModel(def) {
       muzzle.position.set(0, 0, -0.42);
       break;
     }
+    case 'smg':
+      box(0.065, 0.085, 0.3, metal, 0, 0, -0.08);
+      box(0.07, 0.025, 0.22, dark, 0, 0.055, -0.08);
+      cyl(0.02, 0.16, dark, 0, 0.005, -0.3);
+      cyl(0.03, 0.08, metal, 0, 0.005, -0.25);
+      box(0.04, 0.2, 0.05, dark, 0, -0.14, -0.14).rotation.x = 0.1;
+      box(0.042, 0.012, 0.045, accent, 0, -0.245, -0.14);
+      box(0.04, 0.11, 0.05, dark, 0, -0.09, 0.03).rotation.x = -0.3;
+      box(0.03, 0.04, 0.16, metal, 0, 0.0, 0.14);
+      box(0.067, 0.01, 0.2, accent, 0, -0.02, -0.08);
+      muzzle.position.set(0, 0.005, -0.39);
+      break;
+    case 'burst':
+      box(0.075, 0.095, 0.46, metal, 0, 0, -0.12);
+      box(0.08, 0.03, 0.34, dark, 0, 0.06, -0.12);
+      for (let i = 0; i < 3; i++) box(0.012, 0.012, 0.012, accent, 0.04, 0.02, -0.02 - i * 0.03);
+      cyl(0.019, 0.26, dark, 0, 0.005, -0.48);
+      box(0.06, 0.06, 0.1, dark, 0, 0.0, -0.42);
+      box(0.045, 0.15, 0.07, dark, 0, -0.11, -0.12).rotation.x = 0.15;
+      box(0.04, 0.12, 0.05, dark, 0, -0.09, 0.06).rotation.x = -0.3;
+      box(0.06, 0.08, 0.2, metal, 0, -0.01, 0.2);
+      box(0.077, 0.012, 0.34, accent, 0, -0.025, -0.12);
+      muzzle.position.set(0, 0.005, -0.62);
+      break;
+    case 'dmr':
+      box(0.07, 0.09, 0.5, metal, 0, 0, -0.1);
+      box(0.075, 0.028, 0.42, dark, 0, 0.058, -0.12);
+      cyl(0.017, 0.4, dark, 0, 0.005, -0.55);
+      cyl(0.028, 0.08, metal, 0, 0.005, -0.74);
+      box(0.04, 0.12, 0.06, dark, 0, -0.1, -0.12).rotation.x = 0.1;
+      box(0.04, 0.12, 0.05, dark, 0, -0.09, 0.07).rotation.x = -0.3;
+      box(0.06, 0.1, 0.24, metal, 0, -0.01, 0.24);
+      box(0.072, 0.01, 0.42, accent, 0, -0.025, -0.12);
+      muzzle.position.set(0, 0.005, -0.8);
+      break;
+    case 'grav': {
+      box(0.1, 0.11, 0.34, metal, 0, 0, -0.05);
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 18, 14), dark); core.position.set(0, 0.01, -0.33); g.add(core);
+      spin = new THREE.Group(); spin.position.set(0, 0.01, -0.33); g.add(spin);
+      for (let i = 0; i < 2; i++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.08 + i * 0.02, 0.006, 6, 32), accent); t.rotation.y = i * 1.2; spin.add(t); }
+      for (const sx of [-1, 1]) box(0.018, 0.03, 0.2, dark, sx * 0.05, 0.01, -0.3);
+      box(0.045, 0.12, 0.05, dark, 0, -0.1, 0.03).rotation.x = -0.3;
+      box(0.03, 0.08, 0.05, dark, 0, -0.07, -0.2);
+      box(0.102, 0.014, 0.28, accent, 0, 0.045, -0.04);
+      muzzle.position.set(0, 0.01, -0.45);
+      break;
+    }
   }
   // ホロサイト（構えたときにのぞく光る輪）。銃本体は画面中央より下に収まる
-  const top = { rifle: 0.12, shotgun: 0.06, rail: 0.115, nova: 0.125, arc: 0.06 }[def.id];
+  const top = { rifle: 0.12, shotgun: 0.06, rail: 0.115, nova: 0.125, arc: 0.06, smg: 0.1, burst: 0.12, dmr: 0.115, grav: 0.07 }[def.id];
   const sightY = top + 0.065;
   for (const sx of [-1, 1]) box(0.005, sightY - top, 0.012, dark, sx * 0.031, (top + sightY) / 2 - 0.004, -0.12);
   box(0.07, 0.006, 0.02, dark, 0, top + 0.003, -0.12);
@@ -136,6 +199,10 @@ const GRIPS = {
   rail: { r: [0, -0.1, 0.05], l: [0, -0.045, -0.36] },
   nova: { r: [0, -0.11, -0.05], l: [0, -0.11, -0.3] },
   arc: { r: [0, -0.1, 0.04], l: [0, -0.06, -0.2] },
+  smg: { r: [0, -0.09, 0.03], l: [0, -0.2, -0.14] },
+  burst: { r: [0, -0.1, 0.06], l: [0, -0.04, -0.36] },
+  dmr: { r: [0, -0.1, 0.07], l: [0, -0.04, -0.4] },
+  grav: { r: [0, -0.1, 0.03], l: [0, -0.07, -0.2] },
 };
 const Z = new THREE.Vector3(0, 0, 1);
 
@@ -251,7 +318,7 @@ export class WeaponSystem {
     this.cur = this.loadout[0]; this.switchTo = -1;
     this.cooldown = 0; this.reloadT = 0; this.switchT = 0;
     this.adsT = 0; this.kick = 0; this.swayX = 0; this.swayY = 0; this.bobPhase = 0; this.flashT = 0; this.tilt = 0;
-    this.spreadNow = 0.016;
+    this.spreadNow = 0.016; this.burstLeft = 0; this.burstT = 0;
     this.models.forEach((m, i) => { m.group.visible = i === this.cur; m.flash.visible = false; });
   }
 
@@ -259,7 +326,7 @@ export class WeaponSystem {
     if (i < 0 || i >= this.defs.length || !this.loadout.includes(i)) return;
     if (i === this.cur && this.switchT <= 0) return;
     if (i === this.switchTo) return;
-    this.switchTo = i; this.switchT = 0.32; this.reloadT = 0;
+    this.switchTo = i; this.switchT = 0.32; this.reloadT = 0; this.burstLeft = 0;
     this.game.audio.play('switch');
   }
 
@@ -301,6 +368,12 @@ export class WeaponSystem {
     const hs = Math.hypot(b.vel.x, b.vel.z);
     this.spreadNow = lerp(def.spread, def.adsSpread, this.adsT) * (1 + Math.min(hs, 14) / 22) * (b.onGround ? 1 : 1.4);
 
+    // バースト武器の2発目以降
+    if (this.burstLeft > 0) {
+      this.burstT -= dt;
+      if (!player.alive || this.switchT > 0 || this.reloadT > 0 || st.ammo <= 0) this.burstLeft = 0;
+      else if (this.burstT <= 0) { this.fire(player, true); this.burstLeft--; this.burstT = def.burstGap; }
+    }
     const trigger = def.auto ? input.isDown('fire') : input.pressed('fire');
     if (trigger && player.alive && this.switchT <= 0 && this.reloadT <= 0 && this.cooldown <= 0) {
       if (st.ammo > 0) this.fire(player);
@@ -310,10 +383,13 @@ export class WeaponSystem {
     this.animate(dt, input, player, hs);
   }
 
-  fire(player) {
+  fire(player, follow = false) {
     const g = this.game, def = this.def;
     this.st.ammo--;
-    this.cooldown = Math.max(this.cooldown, 0) + (60 / def.rpm) * (player.overdriveT > 0 ? 0.6 : 1);
+    if (!follow) {
+      this.cooldown = Math.max(this.cooldown, 0) + (60 / def.rpm) * (player.overdriveT > 0 ? 0.6 : 1);
+      if (def.burst) { this.burstLeft = def.burst - 1; this.burstT = def.burstGap; }
+    }
     const cam = g.camera;
     cam.getWorldPosition(_o); cam.getWorldDirection(_d);
     const model = this.models[this.cur];
@@ -330,11 +406,11 @@ export class WeaponSystem {
     player.yaw += rand(-1, 1) * r * 0.3;
     this.kick = Math.min(this.kick + def.recoil * 9 + 0.15, 1.3);
     model.flash.visible = true;
-    model.flash.scale.setScalar(rand(0.18, 0.32) * (def.id === 'shotgun' || def.id === 'nova' ? 1.6 : 1));
+    model.flash.scale.setScalar(rand(0.18, 0.32) * (def.id === 'shotgun' || def.id === 'nova' || def.id === 'grav' ? 1.6 : def.id === 'smg' ? 0.8 : 1));
     model.flash.material.rotation = Math.random() * Math.PI;
     this.flashT = 0.045;
     g.effects.flash(_m, def.color, 3, 0.05);
-    g.audio.play(def.sound);
+    g.audio.play(def.sound, def.id === 'smg' ? 0.7 : 1);
     g.shake(def.shake);
     if (def.selfPush && !player.body.onGround) player.body.vel.addScaledVector(_d, -def.selfPush);
     g.emit('fire', { weapon: this.cur });

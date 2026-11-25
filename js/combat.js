@@ -9,6 +9,7 @@ export class Combat {
   constructor(game) {
     this.game = game;
     this.rockets = [];
+    this.wells = [];
     this.orbs = [];
     this.shields = [];
     this.powerups = [];
@@ -23,6 +24,8 @@ export class Combat {
     for (const o of this.orbs) this.game.scene.remove(o.mesh);
     for (const sh of this.shields) this.game.scene.remove(sh.mesh);
     for (const pu of this.powerups) this.game.scene.remove(pu.mesh);
+    for (const w of this.wells || []) this.game.scene.remove(w.mesh);
+    this.wells = [];
     this.rockets = []; this.orbs = []; this.shields = []; this.powerups = [];
   }
 
@@ -153,6 +156,59 @@ export class Combat {
     mesh.lookAt(_v.copy(pos).add(vel));
     this.game.scene.add(mesh);
     this.rockets.push({ pos: pos.clone(), vel: vel.clone(), def, owner, life: 4, mesh });
+  }
+
+  // グラビティ砲：小さなブラックホール。周りの敵を吸い寄せてから爆発する
+  spawnWell(pos, def, owner) {
+    const g = this.game;
+    const mesh = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 14), new THREE.MeshBasicMaterial({ color: 0x050008 }));
+    const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(def.color).multiplyScalar(1.6), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.05, 8, 48), ringMat);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.03, 8, 48), ringMat);
+    ring.rotation.x = Math.PI / 2; ring2.rotation.x = Math.PI / 2.6;
+    mesh.add(core, ring, ring2);
+    mesh.position.copy(pos);
+    g.scene.add(mesh);
+    this.wells.push({ pos, def, owner, t: def.pullTime, mesh, ring, ring2 });
+    g.audio.play('grav');
+    g.effects.ring(pos, def.color, def.pullR, def.pullTime);
+  }
+
+  updateWells(dt) {
+    const g = this.game, fx = g.effects;
+    for (let i = this.wells.length - 1; i >= 0; i--) {
+      const w = this.wells[i];
+      w.t -= dt;
+      const k = 1 - w.t / w.def.pullTime;
+      w.mesh.scale.setScalar(0.6 + k * 0.7);
+      w.ring.rotation.z += dt * 8; w.ring2.rotation.z -= dt * 6;
+      for (const e of g.enemies.list) {
+        if (!e.isActive() || !e.T.knock) continue;
+        e.center(_c);
+        _v.subVectors(w.pos, _c);
+        const d = _v.length();
+        if (d > w.def.pullR || d < 0.3) continue;
+        // 中心へ向かう速さを直接決める（近いほどゆっくり、中心で止まる）
+        const want = Math.min(1, e.T.knock) * Math.min(14, d * 3.2);
+        _v.divideScalar(d);
+        e.body.vel.x += (_v.x * want - e.body.vel.x) * Math.min(1, 10 * dt);
+        e.body.vel.z += (_v.z * want - e.body.vel.z) * Math.min(1, 10 * dt);
+        if (e.T.fly) e.body.vel.y += (_v.y * want - e.body.vel.y) * Math.min(1, 10 * dt);
+        e.pulledT = 0.2;
+      }
+      // 吸い込まれる光の粒
+      for (let n = 0; n < 3; n++) {
+        const a = Math.random() * Math.PI * 2, r = rand(2, w.def.pullR);
+        const x = w.pos.x + Math.cos(a) * r, z = w.pos.z + Math.sin(a) * r, y = w.pos.y + rand(-1, 1.5);
+        fx.spawn(x, y, z, (w.pos.x - x) * 2.2, (w.pos.y - y) * 2.2, (w.pos.z - z) * 2.2, w.def.color, 0.12, 0.45, 0, 1);
+      }
+      if (w.t <= 0) {
+        g.scene.remove(w.mesh);
+        this.wells.splice(i, 1);
+        this.explode(w.pos.clone(), w.def.radius, w.def.dmg, w.owner, w.def.color);
+      }
+    }
   }
 
   explode(pos, radius, dmg, owner, color, opts = {}) {
@@ -353,7 +409,8 @@ export class Combat {
       else if (w) boom = w.point.addScaledVector(w.normal, 0.15);
       else if (r.life <= 0) boom = r.pos;
       if (boom) {
-        this.explode(boom.clone(), r.def.radius, r.def.dmg, r.owner, r.def.color);
+        if (r.def.gravity) this.spawnWell(boom.clone(), r.def, r.owner);
+        else this.explode(boom.clone(), r.def.radius, r.def.dmg, r.owner, r.def.color);
         g.scene.remove(r.mesh);
         this.rockets.splice(i, 1);
         continue;
@@ -364,6 +421,7 @@ export class Combat {
         fx.spawn(r.pos.x - _v.x * k * 0.3, r.pos.y - _v.y * k * 0.3, r.pos.z - _v.z * k * 0.3, rand(-0.5, 0.5), rand(-0.5, 0.5), rand(-0.5, 0.5), k ? 0xffcf6a : r.def.color, 0.22, 0.35, 0, 1);
       }
     }
+    this.updateWells(dt);
     // 回復オーブ
     const p = g.player;
     for (let i = this.orbs.length - 1; i >= 0; i--) {
