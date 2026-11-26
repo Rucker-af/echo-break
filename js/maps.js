@@ -293,7 +293,7 @@ function buildNeon(w) {
   w.anim.push((t) => { ringM.rotation.z = 0.3 + t * 0.01; ring2.rotation.z = 0.3 - t * 0.007; });
   w.buildSkyline({ rMin: 150, rMax: 360, n: 200 });
 
-  return { name: 'NEON CITY', B: S - 4, fog: 0x160b28, fogD: 0.0042, exposure: 0.88, bloom: 0.32, day: false, env: 0.32, spawn: [0, 5.01, 0], yaw: 0 };
+  return { name: 'NEON CITY', B: S - 4, fog: 0x160b28, fogD: 0.0042, exposure: 0.9, bloom: 0.32, day: false, env: 0.32, grade: { sat: 1.12, con: 1.08, tint: [1.02, 0.98, 1.05], vig: 0.42 }, spawn: [0, 5.01, 0], yaw: 0 };
 }
 
 // =====================================================================
@@ -507,7 +507,7 @@ function buildSkylineMap(w) {
   w.buildSky({ top: 0x2a66cf, mid: 0x6ea6e8, hor: 0xd8ecf8, stars: 0, day: true, sunDir: [0.45, 0.62, 0.3] });
   w.buildSkyline({ rMin: 150, rMax: 340, n: 140, day: true });
 
-  return { name: 'SKYLINE', B: S - 4, fog: 0xbfd8ee, fogD: 0.0034, exposure: 1.0, bloom: 0.12, day: true, env: 0.85, spawn: [0, 0.01, 30], yaw: 0 };
+  return { name: 'SKYLINE', B: S - 4, fog: 0xbfd8ee, fogD: 0.0034, exposure: 0.98, bloom: 0.12, day: true, env: 0.85, grade: { sat: 1.16, con: 1.12, tint: [1.03, 1.0, 0.96], vig: 0.3 }, spawn: [0, 0.01, 30], yaw: 0 };
 }
 
 // =====================================================================
@@ -572,7 +572,7 @@ function buildCore(w) {
 
   w.buildSky({ top: 0x0a0208, mid: 0x3a0616, hor: 0xb02a3c, stars: 0.35 });
   w.buildSkyline({ rMin: 110, rMax: 300, n: 120 });
-  return { name: 'CORE ARENA', B: S - 4, fog: 0x3a0a18, fogD: 0.0052, exposure: 1.05, bloom: 0.38, day: false, env: 0.32, spawn: [0, 0.01, 44], yaw: 0 };
+  return { name: 'CORE ARENA', B: S - 4, fog: 0x3a0a18, fogD: 0.0052, exposure: 1.05, grade: { sat: 1.05, con: 1.14, tint: [1.06, 0.95, 0.95], vig: 0.48 }, bloom: 0.38, day: false, env: 0.32, spawn: [0, 0.01, 44], yaw: 0 };
 }
 
 export const MAPS = {

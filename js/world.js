@@ -213,6 +213,11 @@ export class World {
     this.scene.environment = c.day ? this.envRoom : (this.envNight || this.envRoom);
     this.scene.environmentIntensity = c.day ? c.env : (this.envNight ? 0.55 : 0.32);
     if (g.bloom) g.bloom.strength = c.bloom;
+    if (g.grade) {
+      const G = c.grade || {}, u = g.grade.uniforms;
+      u.uSat.value = G.sat ?? 1.08; u.uCon.value = G.con ?? 1.06; u.uVig.value = G.vig ?? 0.38;
+      u.uTint.value.set(...(G.tint || [1, 1, 1]));
+    }
   }
 
   // 写真素材（Poly Haven / CC0）で床・壁・箱をリアル寄りにする。

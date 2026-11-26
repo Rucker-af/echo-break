@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { Input, DEFAULT_KEYS, ACTION_NAMES, keyLabel } from './input.js';
 import { World } from './world.js';
@@ -30,6 +31,29 @@ const DIFF = [
 
 function store(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* 保存できない環境 */ } }
 function load(key, def) { try { const v = localStorage.getItem(key); return v === null ? def : v; } catch (e) { return def; } }
+
+// 画面全体の仕上げ（カラーグレーディング）
+const GRADE = {
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.38 }, uGrain: { value: 0.03 }, uCA: { value: 0.0022 },
+    uSat: { value: 1.08 }, uCon: { value: 1.06 }, uTint: { value: new THREE.Vector3(1, 1, 1) } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uVig, uGrain, uCA, uSat, uCon; uniform vec3 uTint; varying vec2 vUv;
+  void main(){
+    vec2 d = vUv - 0.5; float r = dot(d, d);
+    vec3 c;
+    c.r = texture2D(tDiffuse, vUv + d * uCA * r * 4.0).r;
+    c.g = texture2D(tDiffuse, vUv).g;
+    c.b = texture2D(tDiffuse, vUv - d * uCA * r * 4.0).b;
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(l), c, uSat);
+    c = (c - 0.5) * uCon + 0.5;
+    c *= uTint;
+    c *= 1.0 - uVig * smoothstep(0.12, 0.7, r * 1.7);
+    float n = fract(sin(dot(vUv * vec2(12.9898, 78.233) + uTime, vec2(1.0))) * 43758.5453);
+    c += (n - 0.5) * uGrain;
+    gl_FragColor = vec4(max(c, 0.0), 1.0);
+  }`,
+};
 
 class Game {
   constructor() {
@@ -133,6 +157,10 @@ class Game {
     this.bloom.strength = this.world.cfg.bloom;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
+    // 仕上げ：色味の調整・周辺を暗く・ふちの色ずれ・フィルムの粒
+    this.grade = new ShaderPass(GRADE);
+    this.composer.addPass(this.grade);
+    if (this.world.applyCfg) this.world.applyCfg();
     this.resize();
   }
 
@@ -825,6 +853,7 @@ class Game {
       this.world.update(raw);
       this.effects.update(raw);
     }
+    if (this.grade) this.grade.uniforms.uTime.value = (this.grade.uniforms.uTime.value + raw) % 100;
     this.composer.render();
     if (this.afterRender) this.afterRender(raw);
     this.input.endFrame();
