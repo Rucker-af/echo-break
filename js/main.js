@@ -854,6 +854,7 @@ class Game {
       this.effects.update(raw);
     }
     if (this.grade) this.grade.uniforms.uTime.value = (this.grade.uniforms.uTime.value + raw) % 100;
+    if (this.camHook) this.camHook(raw);
     this.composer.render();
     if (this.afterRender) this.afterRender(raw);
     this.input.endFrame();
@@ -898,7 +899,8 @@ window.addEventListener('DOMContentLoaded', () => {
   try {
     window.game = new Game();
     // 宣伝動画の撮影モード（URLに ?trailer を付けたときだけ）
-    if (location.search.includes('trailer')) import('./trailer.js').then((m) => m.setup(window.game));
+    if (location.search.includes('trailer2')) import('./trailer2.js').then((m) => m.setup(window.game));
+    else if (location.search.includes('trailer')) import('./trailer.js').then((m) => m.setup(window.game));
   } catch (e) {
     console.error(e);
     const t = document.getElementById('loadText');

@@ -654,3 +654,8 @@ body.is-portrait .lbc-load { display: none; }
 #hud.veil::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1;
   background: radial-gradient(ellipse at center, rgba(20,0,30,0) 45%, rgba(40,0,60,.55) 85%, rgba(10,0,20,.85) 100%); animation: veilPulse 1.6s ease-in-out infinite; }
 @keyframes veilPulse { 50% { opacity: .75; } }
+/* スマホ縦：PLAY ボタンの下に隠れないよう余白を足す */
+body.is-portrait .lb-panel { padding-bottom: 96px; }
+body.is-portrait .mapsel button i { display: none; }
+body.is-portrait .mapsel button, body.is-portrait .diff button { padding: 6px 10px; }
+@media (max-height: 520px) and (orientation: landscape) { .mapsel button i { display: none; } .mapsel button { padding: 5px 10px; } }
