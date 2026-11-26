@@ -12,6 +12,7 @@ import { EnemyManager } from './enemies.js';
 import { Combat } from './combat.js';
 import { Player } from './player.js';
 import { WeaponSystem, WEAPONS, unlockLevel } from './weapons.js';
+import { MAPS } from './maps.js';
 import { EchoSystem } from './echo.js';
 import { UI } from './ui.js';
 import { WaveMode, TutorialMode } from './modes.js';
@@ -61,6 +62,7 @@ class Game {
     this.charId = load('eb_char', 'vector');
     this.profile = new Profile();
     this.modeSel = load('eb_mode', 'wave');
+    this.mapSel = load('eb_map', 'neon');
 
     this.audio = new AudioFX();
     this.audio.setVolume(this.settings.volume);
@@ -128,6 +130,7 @@ class Game {
     } else this.ao = null;
     const bres = high ? new THREE.Vector2(innerWidth, innerHeight) : new THREE.Vector2(innerWidth / 2, innerHeight / 2);
     this.bloom = new UnrealBloomPass(bres, 0.32, 0.3, 1.05);
+    this.bloom.strength = this.world.cfg.bloom;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.resize();
@@ -228,6 +231,10 @@ class Game {
     click('btnHome', () => this.toHome());
     click('btnTutToBattle', () => { this.modeSel = 'wave'; store('eb_mode', 'wave'); this.toHome(); });
     click('btnTutHome', () => this.toHome());
+    document.querySelectorAll('#mapSel button').forEach((b) => b.addEventListener('click', () => {
+      this.mapSel = b.dataset.map; store('eb_map', this.mapSel);
+      this.audio.init(); this.audio.play('ui'); this.refreshHome();
+    }));
     document.querySelectorAll('#diffSel button').forEach((b) => b.addEventListener('click', () => {
       this.diffIndex = Number(b.dataset.d); store('eb_diff', String(this.diffIndex));
       this.audio.init(); this.audio.play('ui'); this.refreshHome();
@@ -397,6 +404,11 @@ class Game {
     const mname = { wave: 'SURVIVAL', bossrush: 'BOSS RUSH', tutorial: 'TRAINING' }[this.modeSel] || 'SURVIVAL';
     $('lbModeLabel').textContent = this.modeSel === 'tutorial' ? mname : `${mname} ・ ${DIFF[this.diffIndex].name}`;
     $('diffSel').style.visibility = this.modeSel === 'tutorial' ? 'hidden' : 'visible';
+    document.querySelectorAll('#mapSel button').forEach((b) => b.classList.toggle('on', b.dataset.map === this.mapSel));
+    $('mapSel').classList.toggle('fixed', this.modeSel !== 'wave');
+    $('mapNote').textContent = this.modeSel === 'bossrush' ? 'BOSS RUSH は専用ステージ「CORE ARENA」で戦います' : this.modeSel === 'tutorial' ? 'チュートリアルは NEON CITY で行います' : '';
+    if (this.modeSel === 'wave') $('lbModeLabel').textContent = `SURVIVAL ・ ${MAPS[this.mapSel] ? MAPS[this.mapSel].name : 'NEON CITY'} ・ ${DIFF[this.diffIndex].name}`;
+    if (this.modeSel === 'bossrush') $('lbModeLabel').textContent = `BOSS RUSH ・ CORE ARENA ・ ${DIFF[this.diffIndex].name}`;
     // キャラ
     $('lbcRole').textContent = c.role;
     $('lbcName').textContent = c.name;
@@ -469,6 +481,7 @@ class Game {
 
   // ロビーに入る：選んだキャラのアバターを右側に立たせる
   enterLobby() {
+    if (this.world.mapId !== 'neon') { this.world.load('neon'); this.showcaseFloorFix && this.showcaseFloorFix(); }
     this.menuView = 'select';
     this.setShowcase(getCharacter(this.charId));
     this.refreshHome();
@@ -590,6 +603,8 @@ class Game {
     this.waves.bossRush = bossRush;
     this.mode = mode;
     this.enemies.clear(); this.combat.clear(); this.effects.clear(); this.echo.reset();
+    // マップ：チュートリアルは NEON CITY、ボスラッシュは専用ステージ
+    this.world.load(mode === 'tutorial' ? 'neon' : bossRush ? 'core' : (this.mapSel || 'neon'));
     this.enemySlowT = 0;
     const ch = mode === 'wave' ? getCharacter(this.charId) : TRAINEE;
     this.weapons.reset(mode === 'wave' ? this.loadoutFor(ch) : ch.weapons);
@@ -601,7 +616,8 @@ class Game {
     this.camera.fov = this.settings.fov;
     if (mode === 'wave') {
       this.diff = DIFF[this.diffIndex];
-      this.player.reset(new THREE.Vector3(0, 5.01, 0), 0, ch);
+      const sp = this.world.cfg.spawn;
+      this.player.reset(new THREE.Vector3(sp[0], sp[1], sp[2]), this.world.cfg.yaw || 0, ch);
       this.waves.start();
     } else {
       this.diff = DIFF[0];

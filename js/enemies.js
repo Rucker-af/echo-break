@@ -247,7 +247,8 @@ class Enemy {
     if (!this.hasLOS) this.noLosT += dt; else { this.noLosT = 0; this.goal = null; }
     if (this.noLosT > 1.5 && !this.goal) {
       const a = Math.random() * Math.PI * 2, r = rand(10, 18);
-      this.goal = new THREE.Vector3(clamp(tgt.pos.x + Math.cos(a) * r, -74, 74), 0, clamp(tgt.pos.z + Math.sin(a) * r, -74, 74));
+      const B = (g.world.B || 78) - 4;
+      this.goal = new THREE.Vector3(clamp(tgt.pos.x + Math.cos(a) * r, -B, B), 0, clamp(tgt.pos.z + Math.sin(a) * r, -B, B));
     }
     if (this.goal) {
       const gx = this.goal.x - b.pos.x, gz = this.goal.z - b.pos.z, gd = Math.hypot(gx, gz);

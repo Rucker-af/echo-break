@@ -77,6 +77,7 @@ export class Combat {
         } else if (w) {
           end = w.point;
           fx.sparks(w.point, w.normal, def.color, 4, 7);
+          if (w.col && w.col.barrel) g.world.blowBarrel(w.col.barrel, owner);
         } else end = _e.copy(origin).addScaledVector(d, maxD).clone();
         fx.tracer(muz, end, def.color, def.tracer, 0.07);
       }
@@ -99,7 +100,7 @@ export class Combat {
         _v.copy(_u).multiplyScalar(Math.cos(a)).addScaledVector(_w, Math.sin(a));
         fx.spawn(_c.x + _v.x * 0.12, _c.y + _v.y * 0.12, _c.z + _v.z * 0.12, _v.x * 1.2, _v.y * 1.2, _v.z * 1.2, def.color, 0.09, 0.5 + Math.random() * 0.3, 0, 1);
       }
-      if (w) { fx.sparks(w.point, w.normal, def.color, 22, 10); fx.flash(w.point, def.color, 10, 0.15); }
+      if (w) { fx.sparks(w.point, w.normal, def.color, 22, 10); fx.flash(w.point, def.color, 10, 0.15); if (w.col && w.col.barrel) g.world.blowBarrel(w.col.barrel, owner); }
     } else if (def.type === 'projectile') {
       this.spreadDir(dir, spread, d);
       const w = g.world.raycast(origin, d, 150);
@@ -244,6 +245,7 @@ export class Combat {
     for (const [e, a] of agg) g.onHitFeedback(e, a.dmg, false, a.point, owner, a.killed);
     if (owner === 'player' && n > 0) g.stats.hits++;
     g.effects.explosion(pos, radius, color);
+    if (g.world.blastBarrels) g.world.blastBarrels(pos, radius, owner);
     const dPl = g.camera.position.distanceTo(pos);
     g.audio.play('explosion', Math.max(0.15, 1 - dPl / 60));
     g.shake(Math.max(0, 0.6 - dPl / 40));
@@ -328,8 +330,7 @@ export class Combat {
   // ---- パワーアップ ----
   spawnPowerup() {
     const g = this.game;
-    const spots = [[0, 5.01, 0], [-30, 4.01, -30], [30, 4.01, 30], [30, 4.01, -30], [-30, 4.01, 30], [0, 0, 20], [0, 0, -20],
-      [-24, 0, 12], [24, 0, -12], [0, 3.01, 64], [61, 9.01, 10], [-54, 5.61, 0], [-12, 5.41, -60], [46, 8.11, -58], [56, 3.01, -36]];
+    const spots = g.world.powerSpots && g.world.powerSpots.length ? g.world.powerSpots : [[0, 0, 20]];
     const free = spots.filter(([x, , z]) => !this.powerups.some((p) => Math.hypot(p.pos.x - x, p.pos.z - z) < 3));
     const [x, y, z] = free[Math.floor(Math.random() * free.length)];
     const kinds = [

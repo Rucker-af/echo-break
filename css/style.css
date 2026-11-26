@@ -642,3 +642,10 @@ body.is-portrait .ld-d { display: none; }
 body.is-portrait .ld-bars { display: none; }
 body.is-portrait .lb-h small { display: none; }
 body.is-portrait .lbc-load { display: none; }
+
+/* マップ選択 */
+.mapsel button { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.mapsel button i { font-style: normal; font-size: 10px; color: var(--dim); letter-spacing: .05em; }
+.mapsel.fixed { opacity: .35; pointer-events: none; }
+.map-note { font-size: 12px; color: var(--amber); min-height: 0; }
+.map-note:empty { display: none; }

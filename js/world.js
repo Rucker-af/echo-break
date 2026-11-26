@@ -1,12 +1,14 @@
-// ステージ（アリーナ）：見た目・当たり判定・ジャンプパッド・空・街並み
+// ステージ：見た目・当たり判定・ジャンプパッド・空・街並み・ギミック（動く床・加速レーン・レーザー・爆発ドラム缶）
+// マップごとの組み立ては maps.js。ここはどのマップでも使う部品
 import * as THREE from 'three';
+import { MAPS } from './maps.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-const NEON = { cyan: 0x2fe6ff, magenta: 0xff2bd6, amber: 0xffb02e, violet: 0x8c7bff };
+export const NEON = { cyan: 0x2fe6ff, magenta: 0xff2bd6, amber: 0xffb02e, violet: 0x8c7bff };
 
-function canvasTex(w, h, draw, srgb = true) {
+export function canvasTex(w, h, draw, srgb = true) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
@@ -102,7 +104,19 @@ function windowTexture() {
   });
 }
 
-function scaleBoxUV(geo, w, h, d, s = 4) {
+function dayWindowTexture() {
+  return canvasTex(128, 256, (g, w, h) => {
+    g.fillStyle = '#8fa3b8'; g.fillRect(0, 0, w, h);
+    for (let y = 6; y < h; y += 16) for (let x = 6; x < w; x += 16) {
+      const v = 120 + Math.random() * 90;
+      g.fillStyle = `rgb(${v * 0.55},${v * 0.75},${v})`;
+      g.fillRect(x, y, 10, 11);
+      g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x, y, 10, 2);
+    }
+  });
+}
+
+export function scaleBoxUV(geo, w, h, d, s = 4) {
   const uv = geo.attributes.uv;
   const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
   for (let f = 0; f < 6; f++) {
@@ -117,22 +131,34 @@ function scaleBoxUV(geo, w, h, d, s = 4) {
 
 const SKY_V = `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`;
 const SKY_F = `
-varying vec3 vDir; uniform float uTime;
+varying vec3 vDir; uniform float uTime; uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uHor; uniform float uStars; uniform float uDay; uniform vec3 uSunDir;
 float hash(vec3 p){ p = fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float n2(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  float a=fract(sin(dot(i,vec2(127.1,311.7)))*43758.5), b=fract(sin(dot(i+vec2(1,0),vec2(127.1,311.7)))*43758.5);
+  float c=fract(sin(dot(i+vec2(0,1),vec2(127.1,311.7)))*43758.5), d=fract(sin(dot(i+vec2(1,1),vec2(127.1,311.7)))*43758.5);
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y); }
 void main(){
   vec3 d = normalize(vDir); float h = d.y;
-  vec3 top = vec3(0.01,0.012,0.05); vec3 mid = vec3(0.09,0.03,0.2); vec3 hor = vec3(0.62,0.16,0.48);
-  vec3 col = mix(hor, mid, smoothstep(0.0, 0.22, h));
-  col = mix(col, top, smoothstep(0.22, 0.75, h));
-  if (h < 0.0) col = mix(hor*0.5, vec3(0.02,0.01,0.04), smoothstep(0.0,-0.25,h));
+  vec3 col = mix(uHor, uMid, smoothstep(0.0, 0.22, h));
+  col = mix(col, uTop, smoothstep(0.22, 0.75, h));
+  if (h < 0.0) col = mix(uHor*0.6, uHor*0.25, smoothstep(0.0,-0.25,h));
   // 星
   vec3 p = d * 260.0; vec3 ip = floor(p); float s = hash(ip);
   vec3 fp = fract(p) - 0.5; float dotv = smoothstep(0.35, 0.0, length(fp));
   float star = step(0.9965, s) * dotv * smoothstep(0.05, 0.35, h);
-  col += vec3(0.8,0.9,1.0) * star * (0.55 + 0.45*sin(uTime*2.0 + s*90.0)) * 1.6;
-  // オーロラの帯
+  col += vec3(0.8,0.9,1.0) * star * (0.55 + 0.45*sin(uTime*2.0 + s*90.0)) * 1.6 * uStars;
+  // オーロラの帯（夜だけ）
   float band = sin(d.x*3.0 + uTime*0.05) * 0.5 + 0.5;
-  col += vec3(0.1,0.5,0.6) * smoothstep(0.25,0.0,abs(h-0.32 - band*0.08)) * 0.18;
+  col += vec3(0.1,0.5,0.6) * smoothstep(0.25,0.0,abs(h-0.32 - band*0.08)) * 0.18 * uStars;
+  // 昼：太陽と雲
+  if (uDay > 0.5) {
+    float sd = max(dot(d, normalize(uSunDir)), 0.0);
+    col += vec3(1.0,0.92,0.75) * (pow(sd, 900.0) * 6.0 + pow(sd, 12.0) * 0.35);
+    vec2 cp = d.xz / max(h, 0.05) * 1.3 + vec2(uTime*0.01, 0.0);
+    float cl = n2(cp) * 0.55 + n2(cp*2.3) * 0.3 + n2(cp*5.1) * 0.15;
+    cl = smoothstep(0.52, 0.8, cl) * smoothstep(0.02, 0.2, h);
+    col = mix(col, vec3(1.0), cl * 0.85);
+  }
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -147,16 +173,46 @@ export class World {
     this.time = 0;
     this.mergeBuckets = new Map(); // material -> geometries
     this.trimBuckets = new Map();  // color -> geometries
-    this.group = new THREE.Group();
-    this.scene.add(this.group);
     this.buildMaterials();
-    this.buildLights(game.renderer);
-    this.buildArena();
-    this.flush();
-    this.buildSky();
-    this.buildSkyline();
+    this.pmrem = new THREE.PMREMGenerator(game.renderer);
+    this.envRoom = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.envNight = null;
+    this.mapId = null;
+    this.load('neon');
     this.realLevel = 0;
     this.ready = this.loadRealistic(game.settings.quality === 'high');
+  }
+
+  // マップを組み立て直す（前のマップは片付ける）
+  load(id) {
+    if (!MAPS[id]) id = 'neon';
+    if (this.mapId === id && this.root) return;
+    if (this.root) {
+      this.scene.remove(this.root);
+      this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    }
+    this.mapId = id;
+    this.root = new THREE.Group();
+    this.scene.add(this.root);
+    this.group = this.root;
+    this.colliders = []; this.pads = []; this.spawnPoints = []; this.anim = [];
+    this.movers = []; this.boosts = []; this.lasers = []; this.barrels = []; this.powerSpots = [];
+    this.pendingBlasts = [];
+    this.mergeBuckets.clear(); this.trimBuckets.clear();
+    this.coreLight = null; this.skyMat = null;
+    this.cfg = MAPS[id].build(this);
+    this.flush();
+    this.B = this.cfg.B;
+    this.applyCfg();
+  }
+
+  applyCfg() {
+    const c = this.cfg, g = this.game;
+    if (this.scene.fog) { this.scene.fog.color.set(c.fog); this.scene.fog.density = c.fogD; }
+    g.renderer.toneMappingExposure = c.exposure;
+    this.scene.environment = c.day ? this.envRoom : (this.envNight || this.envRoom);
+    this.scene.environmentIntensity = c.day ? c.env : (this.envNight ? 0.55 : 0.32);
+    if (g.bloom) g.bloom.strength = c.bloom;
   }
 
   // 写真素材（Poly Haven / CC0）で床・壁・箱をリアル寄りにする。
@@ -204,13 +260,14 @@ export class World {
     if (full) {
       jobs.push(new Promise((res) => new RGBELoader().load('assets/hdri/rooftop_night_1k.hdr', (hdr) => {
         hdr.mapping = THREE.EquirectangularReflectionMapping;
-        this.scene.environment = this.pmrem.fromEquirectangular(hdr).texture;
-        this.scene.environmentIntensity = 0.55;
+        this.envNight = this.pmrem.fromEquirectangular(hdr).texture;
+        this.applyCfg();
         hdr.dispose();
         res();
       }, undefined, () => res())));
     }
     await Promise.all(jobs);
+    this.texReady = true;
   }
 
   buildMaterials() {
@@ -225,28 +282,25 @@ export class World {
     for (const k in NEON) this.trimMats[k] = new THREE.MeshBasicMaterial({ color: new THREE.Color(NEON[k]).multiplyScalar(1.15) });
   }
 
-  buildLights(renderer) {
-    const pmrem = this.pmrem = new THREE.PMREMGenerator(renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.32;
-    const hemi = new THREE.HemisphereLight(0x9fb4ff, 0x2a1438, 0.7);
-    this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffd9c2, 2.0);
-    sun.position.set(50, 85, 30);
+  // o: { hemiSky, hemiGround, hemiI, sun, sunI, sunPos, shadowR, rim, rimI }
+  buildLights(o) {
+    const hemi = new THREE.HemisphereLight(o.hemiSky, o.hemiGround, o.hemiI);
+    this.root.add(hemi);
+    const sun = new THREE.DirectionalLight(o.sun, o.sunI);
+    sun.position.set(...o.sunPos);
     sun.castShadow = true;
     const hq = this.game.settings.quality === 'high';
     sun.shadow.mapSize.set(hq ? 4096 : 2048, hq ? 4096 : 2048);
-    const sc = sun.shadow.camera;
-    sc.left = -86; sc.right = 86; sc.top = 86; sc.bottom = -86; sc.near = 1; sc.far = 200;
+    const sc = sun.shadow.camera, R = o.shadowR;
+    sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 400;
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
-    this.scene.add(sun); this.scene.add(sun.target);
+    this.root.add(sun); this.root.add(sun.target);
     this.sun = sun;
-    const rim = new THREE.DirectionalLight(0xff4fd8, 0.35);
-    rim.position.set(-40, 20, -30);
-    this.scene.add(rim);
-    const l1 = new THREE.PointLight(0xff2bd6, 11, 30, 1.6); l1.position.set(0, 9, 0); this.scene.add(l1);
-    const l2 = new THREE.PointLight(0x2fe6ff, 5, 30, 1.6); l2.position.set(0, 6, 30); this.scene.add(l2);
-    this.coreLight = l1;
+    if (o.rim) {
+      const rim = new THREE.DirectionalLight(o.rim, o.rimI);
+      rim.position.set(-40, 20, -30);
+      this.root.add(rim);
+    }
   }
 
   addCollider(x0, y0, z0, x1, y1, z1) {
@@ -352,234 +406,40 @@ export class World {
     return { mesh: m, tex };
   }
 
-  buildArena() {
-    const S = this.S = 78;      // マップの半分の大きさ
-    const IN = 46;              // 中央エリアの半分の大きさ
-    this.floorSize = S * 2;
-    // 床
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(S * 2, S * 2), this.matFloor);
-    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
-    this.group.add(floor);
-    const outer = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: 0x07060c, roughness: 0.9 }));
-    outer.rotation.x = -Math.PI / 2; outer.position.y = -0.05;
-    this.group.add(outer);
-
-    // 外周の壁
-    const WH = 18;
-    this.addBox(0, 0, -S - 1, S * 2 + 4, WH, 2, this.matWall, { trim: 'magenta', midTrim: 7 });
-    this.addBox(0, 0, S + 1, S * 2 + 4, WH, 2, this.matWall, { trim: 'magenta', midTrim: 7 });
-    this.addBox(-S - 1, 0, 0, 2, WH, S * 2, this.matWall, { trim: 'cyan', midTrim: 7 });
-    this.addBox(S + 1, 0, 0, 2, WH, S * 2, this.matWall, { trim: 'cyan', midTrim: 7 });
-    this.addCollider(-S - 3, WH, -S - 3, S + 3, 120, -S);
-    this.addCollider(-S - 3, WH, S, S + 3, 120, S + 3);
-    this.addCollider(-S - 3, WH, -S, -S, 120, S);
-    this.addCollider(S, WH, -S, S + 3, 120, S);
-    for (let i = -65; i <= 65; i += 13) {
-      this.addBox(i, 0, -S + 0.4, 1.4, WH, 0.8, this.matDark, { collide: false });
-      this.addBox(i, 0, S - 0.4, 1.4, WH, 0.8, this.matDark, { collide: false });
-      this.addBox(-S + 0.4, 0, i, 0.8, WH, 1.4, this.matDark, { collide: false });
-      this.addBox(S - 0.4, 0, i, 0.8, WH, 1.4, this.matDark, { collide: false });
-      this.addVStrip(i, 0.5, WH - 0.5, -S + 0.85, 'cyan');
-      this.addVStrip(i, 0.5, WH - 0.5, S - 0.85, 'cyan');
-      this.addVStrip(-S + 0.85, 0.5, WH - 0.5, i, 'magenta');
-      this.addVStrip(S - 0.85, 0.5, WH - 0.5, i, 'magenta');
-    }
-
-    // 中央エリアを囲む低い壁（真ん中と両わきに通り道）
-    const iw = 6;
-    for (const side of [-1, 1]) {
-      for (const [a, b] of [[-IN, -26], [-18, -9], [9, 18], [26, IN]]) {
-        const len = b - a, mid = (a + b) / 2;
-        this.addBox(mid, 0, side * (IN + 1), len, iw, 1.6, this.matWall, { trim: 'magenta' });
-        this.addBox(side * (IN + 1), 0, mid, 1.6, iw, len, this.matWall, { trim: 'cyan' });
-      }
-    }
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.addBox(sx * (IN + 1), 0, sz * (IN + 1), 3, iw + 2, 3, this.matDark, { trim: 'amber' });
-
-    this.buildDistricts(S, IN);
-
-    // 中央タワー
-    this.addBox(0, 0, 0, 10, 5, 10, this.matWall, { trim: 'magenta', midTrim: 2.5 });
-    this.addBox(-3.2, 5, -4.55, 3, 0.9, 0.7, this.matDark, { trim: 'cyan' });
-    this.addBox(3.2, 5, 4.55, 3, 0.9, 0.7, this.matDark, { trim: 'cyan' });
-    this.addBox(-4.55, 5, 3.2, 0.7, 0.9, 3, this.matDark, { trim: 'cyan' });
-    this.addBox(4.55, 5, -3.2, 0.7, 0.9, 3, this.matDark, { trim: 'cyan' });
-
-    // 四隅の高台
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      this.addBox(sx * 30, 0, sz * 30, 14, 4, 14, this.matWall, { trim: 'cyan', midTrim: 2 });
-      this.addBox(sx * 26, 4, sz * 33, 3, 1.1, 1.2, this.matCrate, { trim: 'amber' });
-      this.addBox(sx * 33, 4, sz * 26, 1.2, 1.1, 3, this.matCrate, { trim: 'amber' });
-    }
-    // 南北の空中通路
-    for (const sz of [-1, 1]) {
-      this.addBox(0, 3.4, sz * 30, 46, 0.6, 4, this.matDark, { trim: 'amber' });
-      for (const px of [-11.5, 0, 11.5]) this.addBox(px, 0, sz * 30, 0.8, 3.4, 0.8, this.matDark);
-      this.addBox(-6, 4, sz * 31.6, 4, 0.8, 0.4, this.matDark, { trim: 'amber' });
-      this.addBox(6, 4, sz * 28.4, 4, 0.8, 0.4, this.matDark, { trim: 'amber' });
-    }
-
-    // 遮蔽物
-    const covers = [
-      [-12, -6, 3, 1.6, 6], [12, 6, 3, 1.6, 6], [0, -20, 8, 1.4, 2], [0, 20, 8, 1.4, 2],
-      [-24, 0, 3, 3, 8], [24, 0, 3, 3, 8], [-36, -6, 2, 2.4, 6], [36, 6, 2, 2.4, 6],
-      [-8, 34, 5, 2, 2], [8, -34, 5, 2, 2],
-    ];
-    for (const [x, z, w, h, d] of covers) this.addBox(x, 0, z, w, h, d, this.matWall, { trim: 'cyan' });
-    const crates = [[-20, 12], [20, -12], [-34, 10], [34, -10], [14, 38], [-14, -38], [-6, 12], [6, -12], [-17, -22], [17, 22]];
-    for (const [x, z] of crates) {
-      this.addBox(x, 0, z, 2, 2, 2, this.matCrate, { trim: 'amber' });
-      if (Math.abs(x) > 15) this.addBox(x + 0.3, 2, z - 0.2, 1.2, 1.2, 1.2, this.matCrate);
-    }
-    // 柱（グラップルで飛び移れる）
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      this.addBox(sx * 17, 0, sz * 14, 2, 12, 2, this.matDark, { trim: 'magenta' });
-      this.addVStrip(sx * 17 + 1.02, 0.5, 11.5, sz * 14, 'magenta');
-      this.addVStrip(sx * 17 - 1.02, 0.5, 11.5, sz * 14, 'magenta');
-    }
-
-    // ジャンプパッド
-    this.addPad(0, 9.5, 0, -1);
-    this.addPad(0, -9.5, 0, 1);
-    this.addPad(9.5, 0, -1, 0);
-    this.addPad(-9.5, 0, 1, 0);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.addPad(sx * 19, sz * 25.5, sx, 0, 8, 19);
-
-    // タワー上のコア（演出）
-    const coreMat = new THREE.MeshStandardMaterial({ color: 0x220018, emissive: NEON.magenta, emissiveIntensity: 1.4, metalness: 0.2, roughness: 0.2 });
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.1, 0), coreMat);
-    core.position.set(0, 10, 0);
-    this.group.add(core);
-    const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(NEON.cyan).multiplyScalar(2.4) });
-    const r1 = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.05, 8, 80), ringMat); r1.position.copy(core.position);
-    const r2 = new THREE.Mesh(new THREE.TorusGeometry(3.3, 0.035, 8, 80), this.trimMats.magenta); r2.position.copy(core.position);
-    this.group.add(r1, r2);
-    this.anim.push((t) => {
-      core.rotation.y = t * 0.8; core.position.y = 10 + Math.sin(t * 1.3) * 0.35;
-      r1.rotation.set(t * 0.6, t * 0.4, 0); r2.rotation.set(-t * 0.3, 0, t * 0.5);
-      r1.position.y = r2.position.y = core.position.y;
-    });
-
-    // 看板
-    this.sign('ECHO//BREAK', 'SECTOR-07  ·  COMBAT SIMULATION', 0, 12, -S + 0.1, 0, 26, '#2fe6ff');
-    this.sign('WARNING', 'HOSTILE UNITS DETECTED', 0, 12, S - 0.1, Math.PI, 20, '#ff2bd6');
-    this.sign('ARENA 07', 'REWIND · REPLAY · DESTROY', -S + 0.1, 12, 0, Math.PI / 2, 20, '#ffb02e');
-    this.sign('ECHO LINK', 'MEMORY BUFFER: 5.0 SEC', S - 0.1, 12, 0, -Math.PI / 2, 20, '#8c7bff');
-
-    // 敵の出現位置
-    const cand = [
-      [-40, -15], [40, 15], [-40, 15], [40, -15], [-15, -40], [15, 40], [15, -40], [-15, 40],
-      [0, -40], [0, 40], [-40, 0], [40, 0], [-28, 0], [28, 0], [0, -26], [0, 26],
-      [-60, -60], [60, -60], [-60, 60], [60, 60], [0, -62], [0, 62], [-62, 0], [62, 0],
-      [-30, -66], [30, -66], [-30, 66], [30, 66], [-66, -30], [66, -30], [-66, 30], [66, 30],
-    ];
-    for (const [x, z] of cand) if (this.free(x, 0, z, 1.0, 3.1)) this.spawnPoints.push(new THREE.Vector3(x, 0, z));
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.spawnPoints.push(new THREE.Vector3(sx * 30, 4, sz * 30));
-  }
-
-  // 中央の外側に広がる4つのエリア
-  buildDistricts(S, IN) {
-    const o = IN + 3; // 外側エリアの内側の端
-    // ---- 北：コンテナヤード ----
-    const cont = (x, z, rot, stack = 1) => {
-      for (let k = 0; k < stack; k++) {
-        if (rot) this.addBox(x, k * 2.7, z, 6.2, 2.6, 2.5, this.matCrate, { trim: k === stack - 1 ? 'amber' : null });
-        else this.addBox(x, k * 2.7, z, 2.5, 2.6, 6.2, this.matCrate, { trim: k === stack - 1 ? 'amber' : null });
-      }
-    };
-    const yard = [[-58, -56, 1, 2], [-50, -64, 0, 1], [-38, -58, 1, 1], [-30, -68, 1, 3], [-18, -56, 0, 2], [-8, -66, 1, 1],
-      [8, -58, 1, 2], [16, -68, 0, 1], [26, -56, 1, 1], [34, -64, 0, 2], [46, -58, 1, 3], [58, -66, 1, 1], [64, -54, 0, 2]];
-    for (const [x, z, r, st] of yard) cont(x, z, r, st);
-    // クレーン
-    for (const cx of [-24, 30]) {
-      this.addBox(cx - 6, 0, -72, 1.2, 16, 1.2, this.matDark, { trim: 'amber' });
-      this.addBox(cx + 6, 0, -72, 1.2, 16, 1.2, this.matDark, { trim: 'amber' });
-      this.addBox(cx, 16, -72, 14, 1, 1.4, this.matDark, { trim: 'amber' });
-      this.addBox(cx, 8, -72, 3, 1.4, 3, this.matCrate, { collide: false });
-    }
-    this.addPad(-12, -52, 0, -1, 6, 19);
-    this.addPad(40, -52, 0, -1, 6, 19);
-
-    // ---- 南：プラザ ----
-    // 階段つきのステージ
-    this.addBox(0, 0, 64, 24, 3, 10, this.matWall, { trim: 'cyan', midTrim: 1.5 });
-    for (let i = 0; i < 4; i++) this.addBox(0, 0, 58.5 - i, 10, 2.4 - i * 0.6, 1.0, this.matDark, { trim: i === 0 ? 'cyan' : null });
-    this.addBox(0, 3, 67, 6, 6, 2, this.matDark, { trim: 'magenta' });
-    // 植え込み・ベンチ
-    for (const [x, z] of [[-30, 56], [30, 56], [-44, 66], [44, 66], [-18, 72], [18, 72], [-56, 54], [56, 54]]) {
-      this.addBox(x, 0, z, 5, 1.2, 5, this.matDark, { trim: 'cyan' });
-    }
-    // 記念塔（グラップル用）
-    for (const x of [-38, 38]) {
-      this.addBox(x, 0, 62, 2.4, 20, 2.4, this.matWall, { trim: 'magenta' });
-      this.addVStrip(x + 1.22, 0.5, 19.5, 62, 'magenta');
-      this.addVStrip(x - 1.22, 0.5, 19.5, 62, 'magenta');
-    }
-
-    // ---- 東：ルーフトップ ----
-    const roofs = [[56, -36, 12, 3, 10], [66, -14, 10, 6, 12], [56, 10, 12, 9, 10], [68, 34, 10, 5, 14], [54, 56, 12, 3, 10]];
-    for (const [x, z, w, h, d] of roofs) {
-      this.addBox(x, 0, z, w, h, d, this.matWall, { trim: 'cyan', midTrim: h / 2 });
-      this.addBox(x - w / 2 + 1, h, z, 0.6, 1, d, this.matDark, { trim: 'amber' });
-    }
-    // 屋根どうしをつなぐ橋
-    this.addBox(61, 5.4, -25, 3, 0.6, 6, this.matDark, { trim: 'amber' });
-    this.addBox(61, 8.4, -2, 3, 0.6, 6, this.matDark, { trim: 'amber' });
-    this.addPad(52, -24, 1, 0, 7, 19);
-    this.addPad(50, 22, 1, 0, 7, 22);
-    this.addPad(50, 34, 1, 0, 8, 18);
-
-    // ---- 西：ファクトリー ----
-    for (const [x, z] of [[-60, -30], [-66, -10], [-60, 14], [-68, 36]]) {
-      this.addBox(x, 0, z, 6, 9, 6, this.matDark, { trim: 'magenta', midTrim: 4.5 }); // タンク
-    }
-    // 高い通路（キャットウォーク）
-    this.addBox(-54, 5, 0, 3, 0.6, 70, this.matDark, { trim: 'amber' });
-    for (const z of [-30, -15, 0, 15, 30]) this.addBox(-54, 0, z, 0.8, 5, 0.8, this.matDark);
-    this.addPad(-50, -40, -1, 0, 5, 18);
-    this.addPad(-50, 40, -1, 0, 5, 18);
-    // パイプ
-    for (const y of [2.2, 4.0]) this.addBox(-74, y, 0, 1.2, 1.2, 120, this.matDark, { trim: 'cyan' });
-    // 西のバリケード
-    for (const [x, z] of [[-60, -52], [-60, 52], [-66, 24], [-58, -2]]) this.addBox(x, 0, z, 4, 1.6, 1.2, this.matWall, { trim: 'cyan' });
-  }
-
-  buildSky() {
-    this.skyMat = new THREE.ShaderMaterial({ vertexShader: SKY_V, fragmentShader: SKY_F, uniforms: { uTime: { value: 0 } }, side: THREE.BackSide, depthWrite: false });
+  // 空。o: { top, mid, hor, stars, day, sunDir }
+  buildSky(o) {
+    const C = (c) => new THREE.Color(c);
+    this.skyMat = new THREE.ShaderMaterial({ vertexShader: SKY_V, fragmentShader: SKY_F, side: THREE.BackSide, depthWrite: false, uniforms: {
+      uTime: { value: 0 }, uTop: { value: C(o.top) }, uMid: { value: C(o.mid) }, uHor: { value: C(o.hor) },
+      uStars: { value: o.stars ?? 1 }, uDay: { value: o.day ? 1 : 0 }, uSunDir: { value: new THREE.Vector3(...(o.sunDir || [0.4, 0.6, 0.3])) },
+    } });
     const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), this.skyMat);
     sky.frustumCulled = false; sky.renderOrder = -10;
-    this.scene.add(sky);
-    // 空の巨大リング
-    const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.25, 0.85).multiplyScalar(2.2), fog: false });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(200, 1.6, 12, 220), ringMat);
-    ring.position.set(60, 140, -520); ring.rotation.set(1.15, 0.2, 0.3);
-    this.scene.add(ring);
-    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(230, 0.6, 8, 220), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.9, 1.0).multiplyScalar(1.8), fog: false }));
-    ring2.position.copy(ring.position); ring2.rotation.copy(ring.rotation);
-    this.scene.add(ring2);
-    const planet = new THREE.Mesh(new THREE.SphereGeometry(70, 48, 32), new THREE.MeshStandardMaterial({ color: 0x2a1840, emissive: 0x3a0a40, emissiveIntensity: 0.6, roughness: 0.8, fog: false }));
-    planet.position.copy(ring.position);
-    this.scene.add(planet);
-    this.anim.push((t) => { ring.rotation.z = 0.3 + t * 0.01; ring2.rotation.z = 0.3 - t * 0.007; });
+    this.root.add(sky);
   }
 
-  buildSkyline() {
-    const tex = windowTexture();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x0b0c14, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.8, metalness: 0.5, roughness: 0.6 });
+  // 遠くのビル群。o: { rMin, rMax, n, day }
+  buildSkyline(o) {
+    const day = !!o.day;
+    const tex = day ? dayWindowTexture() : windowTexture();
+    const mat = day
+      ? new THREE.MeshStandardMaterial({ color: 0xc9d3e0, map: tex, metalness: 0.35, roughness: 0.5 })
+      : new THREE.MeshStandardMaterial({ color: 0x0b0c14, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.8, metalness: 0.5, roughness: 0.6 });
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
-    const N = 170;
+    const N = o.n || 170;
     const inst = new THREE.InstancedMesh(geo, mat, N);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     for (let i = 0; i < N; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = 115 + Math.random() * 200;
+      const r = o.rMin + Math.random() * (o.rMax - o.rMin);
       p.set(Math.cos(a) * r, -1, Math.sin(a) * r);
-      s.set(8 + Math.random() * 14, 20 + Math.random() * (r > 160 ? 120 : 70), 8 + Math.random() * 14);
+      s.set(10 + Math.random() * 16, 24 + Math.random() * (r > o.rMin + 60 ? 130 : 80), 10 + Math.random() * 16);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
       m.compose(p, q, s);
       inst.setMatrixAt(i, m);
     }
-    this.scene.add(inst);
+    this.root.add(inst);
+    if (day) return;
     // 屋上の赤いランプ
     const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.1, 0.2).multiplyScalar(3) });
     const lamps = new THREE.InstancedMesh(new THREE.SphereGeometry(0.6, 6, 4), lampMat, N);
@@ -587,14 +447,253 @@ export class World {
       inst.getMatrixAt(i, m); m.decompose(p, q, s);
       p.y += s.y + 0.6; s.set(1, 1, 1); m.compose(p, q, s); lamps.setMatrixAt(i, m);
     }
-    this.scene.add(lamps);
+    this.root.add(lamps);
+  }
+
+  // ---- ギミック ----
+  // 動く床（エレベーター・移動足場）。path(t) が「底面の中心」の位置を返す
+  addMover(w, h, d, mat, path, opts = {}) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    scaleBoxUV(geo, w, h, d); geo.translate(0, h / 2, 0);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    if (opts.trim) {
+      const tg = [];
+      for (const [px, pz, pw, pd] of [[0, -d / 2, w, 0.08], [0, d / 2, w, 0.08], [-w / 2, 0, 0.08, d], [w / 2, 0, 0.08, d]]) {
+        const g = new THREE.BoxGeometry(pw + 0.03, 0.08, pd + 0.03); g.translate(px, h - 0.04, pz); tg.push(g);
+      }
+      mesh.add(new THREE.Mesh(mergeGeometries(tg), this.trimMats[opts.trim]));
+    }
+    this.root.add(mesh);
+    const col = { min: [0, 0, 0], max: [0, 0, 0], mover: true };
+    this.colliders.push(col);
+    const mv = { mesh, col, w, h, d, path, pos: new THREE.Vector3() };
+    const p0 = path(0);
+    mv.pos.set(p0[0], p0[1], p0[2]);
+    this.placeMover(mv);
+    this.movers.push(mv);
+    return mv;
+  }
+
+  placeMover(mv) {
+    const p = mv.pos;
+    mv.mesh.position.copy(p);
+    mv.col.min = [p.x - mv.w / 2, p.y, p.z - mv.d / 2];
+    mv.col.max = [p.x + mv.w / 2, p.y + mv.h, p.z + mv.d / 2];
+  }
+
+  bodies() {
+    const g = this.game, out = [];
+    if (g.player && g.player.body) out.push(g.player.body);
+    if (g.enemies) for (const e of g.enemies.list) if (e.alive && !e.T.fly && !e.T.static) out.push(e.body);
+    return out;
+  }
+
+  updateMovers(t) {
+    if (!this.movers.length) return;
+    const bodies = this.bodies();
+    const np = new THREE.Vector3(), dl = new THREE.Vector3();
+    for (const mv of this.movers) {
+      const q = mv.path(t);
+      np.set(q[0], q[1], q[2]);
+      dl.subVectors(np, mv.pos);
+      if (dl.lengthSq() < 1e-10) continue;
+      const top = mv.pos.y + mv.h, hw = mv.w / 2, hd = mv.d / 2;
+      for (const b of bodies) {
+        const on = Math.abs(b.pos.y - top) < 0.25 && b.pos.x > mv.pos.x - hw - b.r * 0.6 && b.pos.x < mv.pos.x + hw + b.r * 0.6
+          && b.pos.z > mv.pos.z - hd - b.r * 0.6 && b.pos.z < mv.pos.z + hd + b.r * 0.6 && b.vel.y <= 0.5;
+        if (on) { b.pos.x += dl.x; b.pos.z += dl.z; b.pos.y = top + dl.y + 0.001; }
+      }
+      mv.pos.copy(np);
+      this.placeMover(mv);
+    }
+  }
+
+  // 加速レーン：上に乗ると dir の向きに一気に加速する
+  addBoost(x, z, w, d, dx, dz, y = 0) {
+    const tex = canvasTex(64, 128, (g, cw, ch) => {
+      g.clearRect(0, 0, cw, ch);
+      g.strokeStyle = '#ffffff'; g.lineWidth = 10; g.lineCap = 'round';
+      for (const oy of [20, 84]) { g.beginPath(); g.moveTo(10, oy + 30); g.lineTo(32, oy); g.lineTo(54, oy + 30); g.stroke(); }
+    });
+    const len = Math.abs(dx) > 0.5 ? w : d, wid = Math.abs(dx) > 0.5 ? d : w;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(Math.max(1, Math.round(wid / 2)), len / 4);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(NEON.cyan).multiplyScalar(1.6), transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false });
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(wid, len), mat);
+    plane.rotation.x = -Math.PI / 2;
+    plane.rotation.z = Math.atan2(dx, -dz) + Math.PI;
+    plane.position.set(x, y + 0.03, z);
+    this.root.add(plane);
+    const base = new THREE.Mesh(new THREE.PlaneGeometry(wid + 0.4, len + 0.4), new THREE.MeshBasicMaterial({ color: 0x06121a, transparent: true, opacity: 0.7, depthWrite: false }));
+    base.rotation.copy(plane.rotation); base.position.set(x, y + 0.02, z);
+    this.root.add(base);
+    this.boosts.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, y, dir: new THREE.Vector3(dx, 0, dz).normalize(), tex });
+  }
+
+  // レーザーゲート：一定時間ごとに点いたり消えたりする光の壁。axis='x' なら x 方向に伸びる
+  addLaser(x, z, len, axis, opts = {}) {
+    const y0 = opts.y0 ?? 0.2, y1 = opts.y1 ?? 3.4;
+    const grp = new THREE.Group();
+    grp.position.set(x, 0, z);
+    if (axis === 'z') grp.rotation.y = Math.PI / 2;
+    const postMat = this.matDark;
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, y1 + 0.4, 0.5), postMat);
+      post.position.set(sx * (len / 2 + 0.25), (y1 + 0.4) / 2, 0); post.castShadow = true;
+      grp.add(post);
+    }
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.12, 0.2).multiplyScalar(2.2), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const beams = new THREE.Group();
+    for (let k = 0; k < 6; k++) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(len, 0.04, 0.04), mat);
+      b.position.y = y0 + (y1 - y0) * (k / 5);
+      beams.add(b);
+    }
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(len, y1 - y0), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.1, 0.2), transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    sheet.position.y = (y0 + y1) / 2;
+    beams.add(sheet);
+    grp.add(beams);
+    this.root.add(grp);
+    const hx = axis === 'z' ? 0.35 : len / 2, hz = axis === 'z' ? len / 2 : 0.35;
+    // 柱は当たり判定あり
+    for (const sx of [-1, 1]) {
+      const px = axis === 'z' ? x : x + sx * (len / 2 + 0.25), pz = axis === 'z' ? z + sx * (len / 2 + 0.25) : z;
+      this.addCollider(px - 0.25, 0, pz - 0.25, px + 0.25, y1 + 0.4, pz + 0.25);
+    }
+    this.lasers.push({ kind: 'gate', x, z, hx, hz, y0, y1, on: opts.on ?? 2.2, off: opts.off ?? 1.6, phase: opts.phase ?? 0, beams, mat, active: true, cd: 0 });
+  }
+
+  // 回転するレーザーの腕：低い位置をぐるっと回るので、ジャンプでかわす
+  addSweeper(x, z, len, opts = {}) {
+    const y = opts.y ?? 0.7, speed = opts.speed ?? 0.9;
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 1.4, 16), this.matDark);
+    hub.position.set(x, 0.7, z); hub.castShadow = true;
+    this.root.add(hub);
+    this.addCollider(x - 1, 0, z - 1, x + 1, 1.4, z + 1);
+    const arm = new THREE.Group(); arm.position.set(x, y, z);
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.15, 0.25).multiplyScalar(2.6) });
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, len, 8), mat);
+    beam.rotation.z = Math.PI / 2; beam.position.x = len / 2 + 1.2;
+    const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, len, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.1, 0.2), transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.rotation.z = Math.PI / 2; glow.position.x = len / 2 + 1.2;
+    arm.add(beam, glow);
+    this.root.add(arm);
+    this.lasers.push({ kind: 'sweep', x, z, len: len + 1.2, y, speed, arm, cd: 0, a: opts.phase ?? 0 });
+  }
+
+  // 爆発するドラム缶：撃つと爆発し、近くのドラム缶も連鎖する
+  addBarrel(x, z, y = 0) {
+    if (!this.barrelMat) {
+      const tex = canvasTex(128, 128, (g, w, h) => {
+        g.fillStyle = '#b3261e'; g.fillRect(0, 0, w, h);
+        g.fillStyle = '#ffcf33';
+        for (let i = -2; i < 8; i++) { g.beginPath(); g.moveTo(i * 24, 40); g.lineTo(i * 24 + 12, 40); g.lineTo(i * 24 + 28, 60); g.lineTo(i * 24 + 16, 60); g.fill(); }
+        g.fillStyle = '#1a1a1a'; g.fillRect(0, 36, w, 3); g.fillRect(0, 60, w, 3);
+        g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10);
+      });
+      this.barrelMat = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.5, roughness: 0.45 });
+      this.barrelTop = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.7, roughness: 0.4 });
+    }
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.25, 18), [this.barrelMat, this.barrelTop, this.barrelTop]);
+    mesh.position.set(x, y + 0.625, z); mesh.castShadow = true; mesh.receiveShadow = true;
+    this.root.add(mesh);
+    const col = { min: [x - 0.48, y, z - 0.48], max: [x + 0.48, y + 1.25, z + 0.48], barrel: null };
+    this.colliders.push(col);
+    const b = { pos: new THREE.Vector3(x, y, z), mesh, col, alive: true, respawn: 0 };
+    col.barrel = b;
+    this.barrels.push(b);
+    return b;
+  }
+
+  blowBarrel(b, owner = 'player') {
+    if (!b.alive) return;
+    b.alive = false; b.respawn = 28;
+    b.mesh.visible = false;
+    b.saved = [b.col.min, b.col.max];
+    b.col.min = [1e6, 1e6, 1e6]; b.col.max = [1e6, 1e6, 1e6];
+    const c = b.pos.clone(); c.y += 0.7;
+    this.game.combat.explode(c, 6.5, 150, owner === 'echo' ? 'echo' : 'player', 0xff7a2a, { barrel: true });
+    this.game.emit && this.game.emit('barrel');
+  }
+
+  // 爆発の近くにあるドラム缶を少し遅れて連鎖させる
+  blastBarrels(pos, radius, owner) {
+    for (const b of this.barrels) {
+      if (!b.alive || b.queued) continue;
+      if (b.pos.distanceTo(pos) < radius + 0.6) { b.queued = true; this.pendingBlasts.push({ b, t: 0.12 + Math.random() * 0.1, owner }); }
+    }
+  }
+
+  updateGimmicks(dt, t) {
+    const g = this.game, p = g.player;
+    // 連鎖爆発
+    for (let i = this.pendingBlasts.length - 1; i >= 0; i--) {
+      const q = this.pendingBlasts[i];
+      q.t -= dt;
+      if (q.t <= 0) { this.pendingBlasts.splice(i, 1); q.b.queued = false; this.blowBarrel(q.b, q.owner); }
+    }
+    for (const b of this.barrels) {
+      if (b.alive) continue;
+      b.respawn -= dt;
+      if (b.respawn <= 0 && this.free(b.pos.x, b.pos.y, b.pos.z, 0.6, 1.3)) {
+        b.alive = true; b.mesh.visible = true; [b.col.min, b.col.max] = b.saved;
+      }
+    }
+    if (!p || !p.body) return;
+    const pb = p.body;
+    // 加速レーン
+    let inBoost = false;
+    for (const bo of this.boosts) {
+      bo.tex.offset.y -= dt * 2.2;
+      if (pb.pos.x > bo.x0 && pb.pos.x < bo.x1 && pb.pos.z > bo.z0 && pb.pos.z < bo.z1 && Math.abs(pb.pos.y - bo.y) < 0.4 && p.alive) {
+        inBoost = true;
+        const vd = pb.vel.x * bo.dir.x + pb.vel.z * bo.dir.z;
+        const want = 30;
+        if (vd < want) { const k = Math.min(1, 10 * dt) * (want - vd); pb.vel.x += bo.dir.x * k; pb.vel.z += bo.dir.z * k; }
+      }
+    }
+    if (inBoost && !this.wasBoost) { g.audio.play('dash', 0.7); g.player.fovKick = Math.max(g.player.fovKick || 0, 8); }
+    this.wasBoost = inBoost;
+    // レーザー
+    for (const L of this.lasers) {
+      L.cd = Math.max(0, L.cd - dt);
+      if (L.kind === 'gate') {
+        const cyc = L.on + L.off, ph = (t + L.phase) % cyc;
+        const active = ph < L.on;
+        const warn = !active && ph > cyc - 0.45;
+        L.beams.visible = active || (warn && Math.floor(t * 16) % 2 === 0);
+        L.mat.opacity = active ? 0.45 + Math.sin(t * 40) * 0.12 : 0.25;
+        if (active && L.cd <= 0 && p.alive && Math.abs(pb.pos.x - L.x) < L.hx + pb.r && Math.abs(pb.pos.z - L.z) < L.hz + pb.r && pb.pos.y < L.y1 && pb.pos.y + pb.h > L.y0) {
+          L.cd = 0.6;
+          p.takeDamage(18, new THREE.Vector3(L.x, pb.pos.y + 1, L.z));
+          const away = new THREE.Vector3(pb.pos.x - L.x, 0, pb.pos.z - L.z);
+          if (L.hx > L.hz) away.set(0, 0, Math.sign(away.z) || 1); else away.set(Math.sign(away.x) || 1, 0, 0);
+          pb.vel.addScaledVector(away, 9); pb.vel.y = Math.max(pb.vel.y, 4);
+          g.effects.sparks(pb.pos.clone().setY(pb.pos.y + 1), away, 0xff3344, 14, 8);
+        }
+      } else {
+        L.a += dt * L.speed;
+        L.arm.rotation.y = -L.a;
+        const cx = Math.cos(L.a), cz = Math.sin(L.a);
+        const rx = pb.pos.x - L.x, rz = pb.pos.z - L.z;
+        const along = rx * cx + rz * cz, perp = Math.abs(-rx * cz + rz * cx);
+        if (L.cd <= 0 && p.alive && along > 0.5 && along < L.len && perp < 0.45 + pb.r && pb.pos.y < L.y + 0.15) {
+          L.cd = 0.8;
+          p.takeDamage(22, new THREE.Vector3(L.x + cx * along, L.y, L.z + cz * along));
+          pb.vel.y = 7; pb.vel.x += -cz * 6; pb.vel.z += cx * 6;
+          g.effects.sparks(pb.pos.clone().setY(L.y), new THREE.Vector3(0, 1, 0), 0xff3344, 18, 9);
+        }
+      }
+    }
   }
 
   update(dt) {
     this.time += dt;
     const t = this.time;
-    this.skyMat.uniforms.uTime.value = t;
+    if (this.skyMat) this.skyMat.uniforms.uTime.value = t;
     for (const f of this.anim) f(t);
+    this.updateMovers(t);
+    this.updateGimmicks(dt, t);
     for (const p of this.pads) {
       const k = (t * 1.4 + p.pos.x * 0.1) % 1;
       p.ring.scale.setScalar(0.7 + k * 0.5);
@@ -602,7 +701,7 @@ export class World {
       p.beam.material.opacity = 0.12 + Math.sin(t * 4) * 0.05;
       p.arrow.position.y = 0.4 + ((t * 1.5) % 1) * 1.6;
     }
-    this.coreLight.intensity = 10 + Math.sin(t * 2.6) * 2.5;
+    if (this.coreLight) this.coreLight.intensity = 10 + Math.sin(t * 2.6) * 2.5;
   }
 
   // ---- 当たり判定 ----
@@ -653,8 +752,8 @@ export class World {
 
   // レイ（光線）と箱の交差を計算。床(y=0)も含む
   raycast(o, d, maxDist) {
-    let best = maxDist, nAxis = -1, nSign = 0;
-    if (d.y < -1e-6) { const t = -o.y / d.y; if (t >= 0 && t < best) { best = t; nAxis = 1; nSign = 1; } }
+    let best = maxDist, nAxis = -1, nSign = 0, bestCol = null;
+    if (d.y < -1e-6 && !this.noFloor) { const t = -o.y / d.y; if (t >= 0 && t < best) { best = t; nAxis = 1; nSign = 1; } }
     const oa = [o.x, o.y, o.z], da = [d.x, d.y, d.z];
     for (const c of this.colliders) {
       let tmin = 0, tmax = best, axis = -1, sign = 0, ok = true;
@@ -668,12 +767,12 @@ export class World {
         if (t2 < tmax) tmax = t2;
         if (tmin > tmax) { ok = false; break; }
       }
-      if (ok && axis >= 0 && tmin < best) { best = tmin; nAxis = axis; nSign = sign; }
+      if (ok && axis >= 0 && tmin < best) { best = tmin; nAxis = axis; nSign = sign; bestCol = c; }
     }
     if (nAxis < 0) return null;
     const normal = new THREE.Vector3();
     normal.setComponent(nAxis, nSign);
-    return { dist: best, point: new THREE.Vector3(o.x + d.x * best, o.y + d.y * best, o.z + d.z * best), normal };
+    return { dist: best, point: new THREE.Vector3(o.x + d.x * best, o.y + d.y * best, o.z + d.z * best), normal, col: bestCol };
   }
 
   los(a, b) {

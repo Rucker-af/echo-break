@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=21">
+<link rel="stylesheet" href="css/style.css?v=22">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -138,10 +138,12 @@
       <h3 class="lb-h">MODE SELECT</h3>
       <div class="modes" id="modeList">
         <button class="mode-card" data-mode="wave"><b>SURVIVAL</b><span>ウェーブ・サバイバル</span><small>押し寄せる機械兵を殲滅。5ウェーブごとにボスが現れる</small></button>
-        <button class="mode-card" data-mode="bossrush"><b>BOSS RUSH</b><span>ボスラッシュ</span><small>毎ウェーブがボス戦。腕に覚えのある人向け</small><i class="new">NEW</i></button>
+        <button class="mode-card" data-mode="bossrush"><b>BOSS RUSH</b><span>ボスラッシュ</span><small>専用ステージ CORE ARENA で、毎ウェーブがボス戦</small><i class="new">NEW</i></button>
         <button class="mode-card" data-mode="tutorial" id="btnTutorial"><b>TRAINING</b><span>チュートリアル</span><small>移動・武器・スキル・ECHOを学ぶ</small><i class="badge">おすすめ</i></button>
         <button class="mode-card locked" disabled><b>PvP</b><span>対人戦</span><small>オンライン対戦は今後のアップデートで追加予定</small><i class="soon">SOON</i></button>
       </div>
+      <div class="diff mapsel" id="mapSel"><span>マップ</span><button data-map="neon">NEON CITY<i>夜の街</i></button><button data-map="skyline">SKYLINE<i>青空の市街地</i></button></div>
+      <div class="map-note" id="mapNote"></div>
       <div class="diff" id="diffSel"><span>難易度</span><button data-d="0">EASY</button><button data-d="1">NORMAL</button><button data-d="2">HARD</button></div>
     </section>
 
@@ -180,7 +182,7 @@
 
     <button class="lb-play" id="btnBattle"><span>PLAY</span><small id="lbModeLabel">SURVIVAL ・ NORMAL</small></button>
   </div>
-  <div class="version">v0.2 ALPHA</div>
+  <div class="version">v0.3 ALPHA</div>
 </div>
 
 <div id="charSelect" class="screen">
