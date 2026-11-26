@@ -1,6 +1,7 @@
 // 武器：9種類の定義（6〜9番目はレベルで解放）、手元の銃モデル（ビューモデル）、射撃・リロード・切替
 import * as THREE from 'three';
 import { clamp, damp, rand, lerp } from './utils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 export const WEAPONS = [
   { id: 'rifle', name: 'VX-9 パルスライフル', short: 'RIFLE', type: 'hitscan', auto: true, rpm: 620, dmg: 19, headMul: 1.9, mag: 32, reload: 1.5,
@@ -46,13 +47,36 @@ function getFlashTex() {
   return flashTex;
 }
 
+// 武器ごとの塗装色
+const PAINT = { rifle: 0x39414f, shotgun: 0x564c3c, rail: 0x332b40, nova: 0x3c4a35, arc: 0x2f3550, smg: 0x2f403a, burst: 0x4a4636, dmr: 0x2d3646, grav: 0x382e46 };
+
+// 側面の刻印（武器名）
+function plateTexture(text, color) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(0,0,0,0)'; g.fillRect(0, 0, 256, 64);
+  g.font = '900 34px Orbitron, sans-serif'; g.textBaseline = 'middle';
+  g.fillStyle = '#' + new THREE.Color(color).getHexString(); g.globalAlpha = 0.9;
+  g.fillText(text, 10, 32);
+  g.globalAlpha = 0.5; g.fillStyle = '#ffffff'; g.font = '700 14px Orbitron, sans-serif'; g.fillText('ECHO//ARMS', 172, 50);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+
 function buildModel(def) {
-  const metal = new THREE.MeshStandardMaterial({ color: 0x3c424f, metalness: 0.85, roughness: 0.3 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x15171d, metalness: 0.6, roughness: 0.5 });
+  // 塗装した本体（つや消し寄り）・樹脂パーツ・鋼の銃身・光るライン
+  const metal = new THREE.MeshPhysicalMaterial({ color: PAINT[def.id] || 0x3c424f, metalness: 0.5, roughness: 0.45, clearcoat: 0.35, clearcoatRoughness: 0.4 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x17191f, metalness: 0.15, roughness: 0.75 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x9098a4, metalness: 0.9, roughness: 0.32 });
   const accent = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: def.color, emissiveIntensity: 1.1 });
   const g = new THREE.Group();
-  const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); return o; };
-  const cyl = (r, len, m, x, y, z, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m); o.rotation.x = Math.PI / 2; o.position.set(x, y, z); g.add(o); return o; };
+  // 角を丸めた箱（細いパーツは普通の箱）
+  const box = (w, h, d, m, x, y, z) => {
+    const r = Math.min(w, h, d);
+    const geo = r > 0.025 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(0.012, r * 0.3)) : new THREE.BoxGeometry(w, h, d);
+    const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o;
+  };
+  const cyl = (r, len, m, x, y, z, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m === dark && r < 0.03 ? steel : m); o.rotation.x = Math.PI / 2; o.position.set(x, y, z); g.add(o); return o; };
   const torus = (r, t, m, z, y = 0) => { const o = new THREE.Mesh(new THREE.TorusGeometry(r, t, 8, 28), m); o.position.set(0, y, z); g.add(o); return o; };
   const muzzle = new THREE.Object3D();
   let spin = null;
@@ -172,6 +196,27 @@ function buildModel(def) {
   }
   // ホロサイト（構えたときにのぞく光る輪）。銃本体は画面中央より下に収まる
   const top = { rifle: 0.12, shotgun: 0.06, rail: 0.115, nova: 0.125, arc: 0.06, smg: 0.1, burst: 0.12, dmr: 0.115, grav: 0.07 }[def.id];
+  // ---- 共通のディテール ----
+  const half = { rifle: 0.0375, shotgun: 0.045, rail: 0.04, nova: 0.066, arc: 0.045, smg: 0.0325, burst: 0.0375, dmr: 0.035, grav: 0.05 }[def.id] || 0.04;
+  // 上面のレール（ピカティニー）：土台と溝
+  const railY = top - 0.004;
+  box(0.034, 0.008, 0.2, dark, 0, railY, -0.06);
+  for (let i = 0; i < 9; i++) box(0.04, 0.006, 0.008, dark, 0, railY + 0.006, 0.03 - i * 0.022);
+  // 引き金とトリガーガード
+  const guard = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.005, 6, 16, Math.PI), dark);
+  guard.rotation.set(0, Math.PI / 2, Math.PI); guard.position.set(0, -0.055, 0.0); g.add(guard);
+  box(0.008, 0.03, 0.01, steel, 0, -0.06, 0.005);
+  // 側面の排莢口と通気スリット
+  for (const sx of [-1, 1]) {
+    box(0.004, 0.022, 0.06, steel, sx * (half + 0.001), 0.012, -0.03);
+    for (let i = 0; i < 3; i++) box(0.004, 0.008, 0.03, dark, sx * (half + 0.001), -0.012, -0.16 - i * 0.045);
+  }
+  // 右側面の刻印
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.03), new THREE.MeshBasicMaterial({ map: plateTexture(def.short, def.color), transparent: true, depthWrite: false }));
+  plate.position.set(half + 0.003, -0.005, -0.08); plate.rotation.y = Math.PI / 2; g.add(plate);
+  // 銃口のフラッシュハイダー
+  const hider = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.05, 8), steel);
+  hider.rotation.x = Math.PI / 2; hider.position.copy(muzzle.position); hider.position.z += 0.02; g.add(hider);
   const sightY = top + 0.065;
   for (const sx of [-1, 1]) box(0.005, sightY - top, 0.012, dark, sx * 0.031, (top + sightY) / 2 - 0.004, -0.12);
   box(0.07, 0.006, 0.02, dark, 0, top + 0.003, -0.12);

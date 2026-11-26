@@ -858,6 +858,7 @@ class Game {
     }
     this.effects.setScale(innerHeight * this.renderer.getPixelRatio(), this.camera.fov);
     this.ui.cls(this.ui.hud, 'chrono', this.enemySlowT > 0);
+    this.ui.cls(this.ui.hud, 'veil', this.echo.active && this.echo.veil);
     this.ui.cls(this.ui.hud, 'overdrive', this.player.overdriveT > 0);
     this.ui.update(raw);
     if (!this.player.alive && this.state === 'playing') { this.deathT -= raw; if (this.deathT <= 0) this.endGame(); }

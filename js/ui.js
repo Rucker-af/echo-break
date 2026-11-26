@@ -106,8 +106,9 @@ export class UI {
     this.speed.classList.add('go');
   }
 
-  echoBanner() {
+  echoBanner(tag = 'ECHO') {
     const e = this.echoBannerEl;
+    e.innerHTML = `<span>${tag === 'ECHO' ? 'ECHO' : tag.split(' ')[0]}</span><small>${tag === 'ECHO' ? 'PAST SELF DEPLOYED' : tag.split(' ').slice(1).join(' ') + ' · ECHO'}</small>`;
     e.classList.remove('go'); void e.offsetWidth;
     e.classList.add('go');
   }

@@ -6,7 +6,7 @@ export const CHARACTERS = [
     hp: 100, speed: 1.0, weapons: [0, 1], dashMax: 3, grappleCD: 4.5,
     skill: 'shock', skillName: 'ショックウェーブ', skillCD: 7, shockPower: 1,
     ult: 'overdrive', ultName: 'オーバードライブ', ultDesc: '6秒間、連射・リロード・移動が速くなる',
-    echoName: 'ダブルタップ', echoDesc: 'エコーの射撃が1.5倍の手数になる',
+    echoName: 'シャドウ・スクワッド', echoTag: 'SHADOW SQUAD', echoDesc: '影の分身が2体になり、左右から一緒に撃つ（手数が2倍）',
     desc: 'ダッシュを3回分ためられる切り込み役。',
   },
   {
@@ -14,7 +14,7 @@ export const CHARACTERS = [
     hp: 90, speed: 1.08, weapons: [4, 1], dashMax: 2, grappleCD: 2.0,
     skill: 'shock', skillName: 'ショックウェーブ', skillCD: 8, shockPower: 0.8,
     ult: 'meteor', ultName: 'メテオダイブ', ultDesc: '空高く跳び上がり、真下へ急降下して周囲を吹き飛ばす',
-    echoName: 'アークエコー', echoDesc: 'エコーが消えるとき、周りの敵へ電撃が連鎖する',
+    echoName: 'シャドウ・ステップ', echoTag: 'SHADOW STEP', echoDesc: '影の再生中にもう一度 ECHO で影と入れ替わる。入れ替わりと消滅のときに電撃が連鎖',
     desc: 'フックの再使用が速い空中戦のスペシャリスト。',
   },
   {
@@ -22,7 +22,7 @@ export const CHARACTERS = [
     hp: 90, speed: 1.0, weapons: [2, 0], dashMax: 2, grappleCD: 4.5,
     skill: 'scan', skillName: 'スキャン', skillCD: 10,
     ult: 'chrono', ultName: 'クロノフィールド', ultDesc: '5秒間、敵と敵の弾がスローになる',
-    echoName: 'ロックオン', echoDesc: 'エコーの狙いがとても正確になる',
+    echoName: 'シャドウ・ヴェール', echoTag: 'SHADOW VEIL', echoDesc: '影の再生中は闇に溶けて敵に狙われない。影の狙いはとても正確',
     desc: '壁の向こうの敵を暴き、遠くから仕留める。',
   },
   {
@@ -30,7 +30,7 @@ export const CHARACTERS = [
     hp: 150, speed: 0.9, weapons: [3, 1], dashMax: 2, grappleCD: 5.5,
     skill: 'shock', skillName: 'ヘヴィショック', skillCD: 7, shockPower: 1.5,
     ult: 'bulwark', ultName: 'バルワーク', ultDesc: '前方に敵の弾を防ぐ盾を8秒間張る',
-    echoName: 'ビッグバン', echoDesc: 'エコーの最後の爆発が大きくなる',
+    echoName: 'シャドウ・バスティオン', echoTag: 'SHADOW BASTION', echoDesc: '巨大な影がすべての敵を引きつけ、最後に大爆発する',
     desc: 'HP150。爆発物で前線を押し上げる。',
   },
 ];

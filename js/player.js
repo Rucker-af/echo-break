@@ -150,7 +150,8 @@ export class Player {
       } else g.audio.play('empty');
     }
     if (input.pressed('echo')) {
-      if (this.echoMeter >= 100 && !g.echo.active) { if (g.echo.activate()) this.echoMeter = 0; }
+      if (g.echo.active && g.echo.trySwap()) { /* HAKEN：影と入れ替わり */ }
+      else if (this.echoMeter >= 100 && !g.echo.active) { if (g.echo.activate()) this.echoMeter = 0; }
       else { g.audio.play('empty'); g.ui.toast(g.echo.active ? 'エコー再生中' : `ECHO チャージ中 ${Math.floor(this.echoMeter)}%`); }
     }
 
